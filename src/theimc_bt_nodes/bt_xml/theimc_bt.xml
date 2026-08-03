@@ -53,9 +53,17 @@
               <AlwaysSuccess/>
             </Switch3>
 
-            <!-- 홈으로 이동하여 충전 대기 -->
-            <GoToPose x="1.2145" y="-0.7806" yaw="3.1125"/>
+            <!-- 1. 충전소 앞(ArUco 마커가 보이는 위치)까지 주행 -->
+            <GoToPose x="-1.93162" y="-2.98803" yaw="3.13067"/>
+
+            <!-- 2. ArUco 정밀 도킹 활성화 (파이썬 서비스 호출) -->
+            <ToggleDocking enable="true"/>
+
+            <!-- 3. 충전이 완료될 때까지 대기 (이 동안 Python 노드가 cmd_vel을 쏴서 도킹 완료함) -->
             <WaitForCharge target_battery="90.0"/>
+
+            <!-- 4. 혹시 모를 오작동 방지를 위해 출발 전 도킹 모드 명시적 비활성화 -->
+            <ToggleDocking enable="false"/>
 
             <!-- 충전 완료 후, 아까 작업이 중단되었던 위치 근처(레일 진입 전)로 복귀 -->
             <SetBlackboard output_key="mission_return_mode" value="DIRECT"/>

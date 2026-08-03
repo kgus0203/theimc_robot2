@@ -402,8 +402,8 @@ class BringUp(Node):
         try:
             index = parts.index('WHEEL')
 
-            right_velocity = float(parts[index + 1])
-            left_velocity = float(parts[index + 2])
+            right_velocity = float(parts[index + 2])
+            left_velocity = float(parts[index + 1])
 
         except (ValueError, IndexError):
             return

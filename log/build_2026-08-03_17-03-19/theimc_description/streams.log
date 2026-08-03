@@ -1,0 +1,37 @@
+[0.164s] Invoking command in '/home/jeff/theimc_robot/build/theimc_description': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble /usr/bin/cmake --build /home/jeff/theimc_robot/build/theimc_description -- -j6 -l6
+[0.304s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.993s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[1.021s] -- Found urdf: 2.6.1 (/opt/ros/humble/share/urdf/cmake)
+[1.151s] -- Found xacro: 2.1.1 (/opt/ros/humble/share/xacro/cmake)
+[1.165s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[1.484s] -- Added test 'flake8' to check Python code syntax and style conventions
+[1.485s] -- Added test 'lint_cmake' to check CMake code style
+[1.487s] -- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+[1.489s] -- Added test 'xmllint' to check XML markup files
+[1.495s] -- Configuring done
+[1.507s] -- Generating done
+[1.512s] -- Build files have been written to: /home/jeff/theimc_robot/build/theimc_description
+[1.822s] Invoked command in '/home/jeff/theimc_robot/build/theimc_description' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble /usr/bin/cmake --build /home/jeff/theimc_robot/build/theimc_description -- -j6 -l6
+[1.874s] Invoking command in '/home/jeff/theimc_robot/build/theimc_description': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble /usr/bin/cmake --install /home/jeff/theimc_robot/build/theimc_description
+[1.915s] -- Install configuration: ""
+[1.916s] -- Execute custom install script
+[1.918s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/launch/theimc_description.launch.py
+[1.924s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/rviz/model.rviz
+[1.924s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/rviz/theimc.rviz
+[1.925s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/urdf/theimc.urdf
+[1.926s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/ament_index/resource_index/package_run_dependencies/theimc_description
+[1.927s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/ament_index/resource_index/parent_prefix_path/theimc_description
+[1.928s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/environment/ament_prefix_path.sh
+[1.929s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/environment/ament_prefix_path.dsv
+[1.931s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/environment/path.sh
+[1.931s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/environment/path.dsv
+[1.935s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/local_setup.bash
+[1.936s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/local_setup.sh
+[1.936s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/local_setup.zsh
+[1.937s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/local_setup.dsv
+[1.938s] -- Symlinking: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/package.dsv
+[1.992s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/ament_index/resource_index/packages/theimc_description
+[1.993s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/cmake/theimc_descriptionConfig.cmake
+[1.993s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/cmake/theimc_descriptionConfig-version.cmake
+[1.993s] -- Up-to-date symlink: /home/jeff/theimc_robot/install/theimc_description/share/theimc_description/package.xml
+[1.999s] Invoked command in '/home/jeff/theimc_robot/build/theimc_description' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble /usr/bin/cmake --install /home/jeff/theimc_robot/build/theimc_description

@@ -1,0 +1,15 @@
+running develop
+running egg_info
+writing localizer_server.egg-info/PKG-INFO
+writing dependency_links to localizer_server.egg-info/dependency_links.txt
+writing entry points to localizer_server.egg-info/entry_points.txt
+writing requirements to localizer_server.egg-info/requires.txt
+writing top-level names to localizer_server.egg-info/top_level.txt
+reading manifest file 'localizer_server.egg-info/SOURCES.txt'
+writing manifest file 'localizer_server.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/jeff/theimc_robot/install/localizer_server/lib/python3.10/site-packages/localizer-server.egg-link (link to .)
+Installing global_localization script to /home/jeff/theimc_robot/install/localizer_server/lib/localizer_server
+
+Installed /home/jeff/theimc_robot/build/localizer_server
+running symlink_data

@@ -1,0 +1,15 @@
+running develop
+running egg_info
+writing theimc_teleop.egg-info/PKG-INFO
+writing dependency_links to theimc_teleop.egg-info/dependency_links.txt
+writing entry points to theimc_teleop.egg-info/entry_points.txt
+writing requirements to theimc_teleop.egg-info/requires.txt
+writing top-level names to theimc_teleop.egg-info/top_level.txt
+reading manifest file 'theimc_teleop.egg-info/SOURCES.txt'
+writing manifest file 'theimc_teleop.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/jeff/theimc_robot/install/theimc_teleop/lib/python3.10/site-packages/theimc-teleop.egg-link (link to .)
+Installing teleop_keyboard script to /home/jeff/theimc_robot/install/theimc_teleop/lib/theimc_teleop
+
+Installed /home/jeff/theimc_robot/build/theimc_teleop
+running symlink_data

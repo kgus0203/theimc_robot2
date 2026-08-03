@@ -30,6 +30,7 @@ private:
   double current_battery_{100.0};
   bool is_battery_low_{false};
   bool has_received_msg_{false};
+  bool has_received_battery_state_{false};
 };
 
 }  // namespace theimc_bt_nodes

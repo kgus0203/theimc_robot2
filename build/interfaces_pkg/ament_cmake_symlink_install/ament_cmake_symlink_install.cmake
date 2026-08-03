@@ -534,6 +534,9 @@ ament_cmake_symlink_install_files("/home/jeff/theimc_robot/src/interfaces_pkg" F
 # install(FILES "/home/jeff/theimc_robot/build/interfaces_pkg/rosidl_cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake" "DESTINATION" "share/interfaces_pkg/cmake")
 ament_cmake_symlink_install_files("/home/jeff/theimc_robot/src/interfaces_pkg" FILES "/home/jeff/theimc_robot/build/interfaces_pkg/rosidl_cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake" "DESTINATION" "share/interfaces_pkg/cmake")
 
+# install(FILES "/home/jeff/theimc_robot/build/interfaces_pkg/rosidl_cmake/rosidl_cmake_aggregate_target-extras.cmake" "DESTINATION" "share/interfaces_pkg/cmake")
+ament_cmake_symlink_install_files("/home/jeff/theimc_robot/src/interfaces_pkg" FILES "/home/jeff/theimc_robot/build/interfaces_pkg/rosidl_cmake/rosidl_cmake_aggregate_target-extras.cmake" "DESTINATION" "share/interfaces_pkg/cmake")
+
 # install(FILES "/home/jeff/theimc_robot/build/interfaces_pkg/ament_cmake_core/interfaces_pkgConfig.cmake" "/home/jeff/theimc_robot/build/interfaces_pkg/ament_cmake_core/interfaces_pkgConfig-version.cmake" "DESTINATION" "share/interfaces_pkg/cmake")
 ament_cmake_symlink_install_files("/home/jeff/theimc_robot/src/interfaces_pkg" FILES "/home/jeff/theimc_robot/build/interfaces_pkg/ament_cmake_core/interfaces_pkgConfig.cmake" "/home/jeff/theimc_robot/build/interfaces_pkg/ament_cmake_core/interfaces_pkgConfig-version.cmake" "DESTINATION" "share/interfaces_pkg/cmake")
 

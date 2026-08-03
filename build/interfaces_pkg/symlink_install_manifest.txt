@@ -358,6 +358,7 @@
 /home/jeff/theimc_robot/install/interfaces_pkg/share/interfaces_pkg/cmake/ament_cmake_export_targets-extras.cmake
 /home/jeff/theimc_robot/install/interfaces_pkg/share/interfaces_pkg/cmake/rosidl_cmake_export_typesupport_targets-extras.cmake
 /home/jeff/theimc_robot/install/interfaces_pkg/share/interfaces_pkg/cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake
+/home/jeff/theimc_robot/install/interfaces_pkg/share/interfaces_pkg/cmake/rosidl_cmake_aggregate_target-extras.cmake
 /home/jeff/theimc_robot/install/interfaces_pkg/share/interfaces_pkg/cmake/interfaces_pkgConfig.cmake
 /home/jeff/theimc_robot/install/interfaces_pkg/share/interfaces_pkg/cmake/interfaces_pkgConfig-version.cmake
 /home/jeff/theimc_robot/install/interfaces_pkg/share/interfaces_pkg/package.xml

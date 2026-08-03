@@ -270,7 +270,7 @@ def generate_launch_description():
     launch_description.add_action(motor_drive_cmd)
     launch_description.add_action(ydlidar_cmd)
     launch_description.add_action(scan_filter_cmd)
-    launch_description.add_action(robot_agent_cmd)
+    #launch_description.add_action(robot_agent_cmd)
     launch_description.add_action(realsense_cmd)
     # launch_description.add_action(rgbd_odometry_cmd)  # RTAB odometry disabled
     launch_description.add_action(ekf_cmd)

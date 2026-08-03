@@ -882,4 +882,11 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: \
  /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__traits.hpp \
  /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__type_support.hpp \
  /opt/ros/humble/include/tf2_ros/tf2_ros/qos.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_charge.hpp
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_charge.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/toggle_docking.hpp \
+ /opt/ros/humble/include/std_srvs/std_srvs/srv/set_bool.hpp \
+ /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__struct.hpp \
+ /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__builder.hpp \
+ /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__traits.hpp \
+ /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__type_support.hpp \
+ /opt/ros/humble/include/std_srvs/std_srvs/msg/rosidl_generator_cpp__visibility_control.hpp

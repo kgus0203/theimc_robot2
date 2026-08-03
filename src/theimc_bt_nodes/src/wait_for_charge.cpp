@@ -9,7 +9,7 @@ namespace theimc_bt_nodes {
 WaitForCharge::WaitForCharge(
     const std::string& xml_tag_name, 
     const BT::NodeConfiguration& config)
-: BT::StatefulActionNode(xml_tag_name, config), has_received_data_(false), current_battery_(0.0) {
+: BT::StatefulActionNode(xml_tag_name, config), current_battery_(0.0), has_received_data_(false) {
     node_ = config.blackboard->get<rclcpp::Node::SharedPtr>("node");
 
     // 배터리 상태 토픽 구독

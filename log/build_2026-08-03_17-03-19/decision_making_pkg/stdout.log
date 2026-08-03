@@ -1,0 +1,17 @@
+running develop
+running egg_info
+writing decision_making_pkg.egg-info/PKG-INFO
+writing dependency_links to decision_making_pkg.egg-info/dependency_links.txt
+writing entry points to decision_making_pkg.egg-info/entry_points.txt
+writing requirements to decision_making_pkg.egg-info/requires.txt
+writing top-level names to decision_making_pkg.egg-info/top_level.txt
+reading manifest file 'decision_making_pkg.egg-info/SOURCES.txt'
+writing manifest file 'decision_making_pkg.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/jeff/theimc_robot/install/decision_making_pkg/lib/python3.10/site-packages/decision-making-pkg.egg-link (link to .)
+Installing aruco_docker_node script to /home/jeff/theimc_robot/install/decision_making_pkg/lib/decision_making_pkg
+Installing rail_approach_action_server_node script to /home/jeff/theimc_robot/install/decision_making_pkg/lib/decision_making_pkg
+Installing rail_pd_controller_node script to /home/jeff/theimc_robot/install/decision_making_pkg/lib/decision_making_pkg
+
+Installed /home/jeff/theimc_robot/build/decision_making_pkg
+running symlink_data

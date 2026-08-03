@@ -1,0 +1,17 @@
+[4.550s] Invoking command in '/home/jeff/theimc_robot/build/localizer_server': PYTHONPATH=/home/jeff/theimc_robot/build/localizer_server/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/localizer_server/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/localizer_server/build --no-deps symlink_data
+[6.114s] running develop
+[6.988s] running egg_info
+[6.995s] writing localizer_server.egg-info/PKG-INFO
+[6.996s] writing dependency_links to localizer_server.egg-info/dependency_links.txt
+[6.997s] writing entry points to localizer_server.egg-info/entry_points.txt
+[7.003s] writing requirements to localizer_server.egg-info/requires.txt
+[7.004s] writing top-level names to localizer_server.egg-info/top_level.txt
+[7.009s] reading manifest file 'localizer_server.egg-info/SOURCES.txt'
+[7.017s] writing manifest file 'localizer_server.egg-info/SOURCES.txt'
+[7.021s] running build_ext
+[7.029s] Creating /home/jeff/theimc_robot/install/localizer_server/lib/python3.10/site-packages/localizer-server.egg-link (link to .)
+[7.031s] Installing global_localization script to /home/jeff/theimc_robot/install/localizer_server/lib/localizer_server
+[7.032s] 
+[7.034s] Installed /home/jeff/theimc_robot/build/localizer_server
+[7.035s] running symlink_data
+[8.400s] Invoked command in '/home/jeff/theimc_robot/build/localizer_server' returned '0': PYTHONPATH=/home/jeff/theimc_robot/build/localizer_server/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/localizer_server/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/localizer_server/build --no-deps symlink_data
