@@ -487,6 +487,30 @@ src/save_current_pose.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.s
 .PHONY : src/save_current_pose.cpp.s
 
+src/toggle_docking.o: src/toggle_docking.cpp.o
+.PHONY : src/toggle_docking.o
+
+# target to build an object file
+src/toggle_docking.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o
+.PHONY : src/toggle_docking.cpp.o
+
+src/toggle_docking.i: src/toggle_docking.cpp.i
+.PHONY : src/toggle_docking.i
+
+# target to preprocess a source file
+src/toggle_docking.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.i
+.PHONY : src/toggle_docking.cpp.i
+
+src/toggle_docking.s: src/toggle_docking.cpp.s
+.PHONY : src/toggle_docking.s
+
+# target to generate assembly for a file
+src/toggle_docking.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.s
+.PHONY : src/toggle_docking.cpp.s
+
 src/wait_for_charge.o: src/wait_for_charge.cpp.o
 .PHONY : src/wait_for_charge.o
 
@@ -633,6 +657,9 @@ help:
 	@echo "... src/save_current_pose.o"
 	@echo "... src/save_current_pose.i"
 	@echo "... src/save_current_pose.s"
+	@echo "... src/toggle_docking.o"
+	@echo "... src/toggle_docking.i"
+	@echo "... src/toggle_docking.s"
 	@echo "... src/wait_for_charge.o"
 	@echo "... src/wait_for_charge.i"
 	@echo "... src/wait_for_charge.s"

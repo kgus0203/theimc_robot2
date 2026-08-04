@@ -19,6 +19,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o.d"
   "CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o"
   "CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o.d"
+  "CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o"
+  "CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o.d"
   "CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o"
   "CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o.d"
   "CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o"

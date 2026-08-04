@@ -6358,7 +6358,14 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: /home/jeff/theimc_robot
   /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__traits.hpp \
   /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__type_support.hpp \
   /opt/ros/humble/include/tf2_ros/tf2_ros/qos.hpp \
-  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_charge.hpp
+  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_charge.hpp \
+  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/toggle_docking.hpp \
+  /opt/ros/humble/include/std_srvs/std_srvs/srv/set_bool.hpp \
+  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__struct.hpp \
+  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__builder.hpp \
+  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__traits.hpp \
+  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__type_support.hpp \
+  /opt/ros/humble/include/std_srvs/std_srvs/msg/rosidl_generator_cpp__visibility_control.hpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp \
   /usr/include/stdc-predef.h \
@@ -10982,6 +10989,8 @@ CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/s
 
 /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_current_pose.cpp:
 
+/opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__traits.hpp:
+
 /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_charge.hpp:
 
 /opt/ros/humble/include/tf2_ros/tf2_ros/qos.hpp:
@@ -11015,6 +11024,8 @@ CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/s
 /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/transform_stamped__builder.hpp:
 
 /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/transform_stamped.hpp:
+
+/home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/toggle_docking.hpp:
 
 /opt/ros/humble/include/tf2/tf2/LinearMath/MinMax.hpp:
 
@@ -11290,6 +11301,8 @@ CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/s
 
 /opt/ros/humble/include/rclcpp/rclcpp/parameter_service.hpp:
 
+/opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__struct.hpp:
+
 /opt/ros/humble/include/tf2_msgs/tf2_msgs/srv/frame_graph.hpp:
 
 /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/empty__struct.hpp:
@@ -11335,6 +11348,8 @@ CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/s
 /opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__builder.hpp:
 
 /opt/ros/humble/include/rclcpp/rclcpp/parameter_client.hpp:
+
+/opt/ros/humble/include/std_srvs/std_srvs/msg/rosidl_generator_cpp__visibility_control.hpp:
 
 /opt/ros/humble/include/rclcpp/rclcpp/executors/static_executor_entities_collector.hpp:
 
@@ -11575,6 +11590,8 @@ CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/s
 /usr/include/c++/11/bits/specfun.h:
 
 /usr/lib/gcc/aarch64-linux-gnu/11/include/stdarg.h:
+
+/opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__builder.hpp:
 
 /usr/include/aarch64-linux-gnu/c++/11/bits/ctype_base.h:
 
@@ -12876,6 +12893,8 @@ CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/s
 
 /opt/ros/humble/include/rclcpp/rclcpp/guard_condition.hpp:
 
+/opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__type_support.hpp:
+
 /opt/ros/humble/include/rclcpp/rclcpp/executor_options.hpp:
 
 /opt/ros/humble/include/rclcpp/rclcpp/node_interfaces/node_base_interface.hpp:
@@ -12989,6 +13008,8 @@ CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/s
 /opt/ros/humble/include/rclcpp/rclcpp/message_info.hpp:
 
 /opt/ros/humble/include/rclcpp/rclcpp/serialized_message.hpp:
+
+/opt/ros/humble/include/std_srvs/std_srvs/srv/set_bool.hpp:
 
 /opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__struct.hpp:
 

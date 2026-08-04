@@ -34,6 +34,7 @@ add_library(${PROJECT_NAME} SHARED
   src/is_battery_low.cpp
   src/wait_for_charge.cpp
   src/save_current_pose.cpp
+  src/toggle_docking.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} yaml-cpp)
