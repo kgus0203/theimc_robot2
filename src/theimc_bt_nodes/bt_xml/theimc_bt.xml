@@ -54,7 +54,7 @@
             </Switch3>
 
             <!-- 1. 충전소 앞(ArUco 마커가 보이는 위치)까지 주행 -->
-            <GoToPose x="-1.93162" y="-2.98803" yaw="3.13067"/>
+            <GoToPose x="-1.1456728" y="-0.5875444" yaw="3.14096"/>
 
             <!-- 2. ArUco 정밀 도킹 활성화 (파이썬 서비스 호출) -->
             <ToggleDocking enable="true"/>
@@ -147,11 +147,13 @@
       <GoToPose x="{rail_x}" y="{rail_y}" yaw="{rail_yaw}"/>
       <!-- 2. 레일 정밀 도킹 접근 (allow_reverse 속성명 교정) -->
       <SetBlackboard output_key="mission_return_mode" value="REVERSE_HOME"/>
+      <!--
       <RailApproach
         timeout_sec="20.0"
         x_tolerance="0.25"
         angle_tolerance="5.0"
         allow_reverse_align="true"/>
+      -->
         
       <!-- 3. 레일 진입 및 STM 시리얼(ON_RAIL) 대기 -->
       <SetBlackboard output_key="mission_return_mode" value="EXIT_RAIL_HOME"/>
