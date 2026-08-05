@@ -1,0 +1,175 @@
+[0.000000] (-) TimerEvent: {}
+[0.000890] (-) JobUnselected: {'identifier': 'camera_perception_pkg'}
+[0.001192] (-) JobUnselected: {'identifier': 'debug_pkg'}
+[0.001457] (-) JobUnselected: {'identifier': 'decision_making_pkg'}
+[0.001554] (-) JobUnselected: {'identifier': 'interfaces_pkg'}
+[0.001630] (-) JobUnselected: {'identifier': 'localizer_server'}
+[0.001700] (-) JobUnselected: {'identifier': 'theimc_bringup'}
+[0.001768] (-) JobUnselected: {'identifier': 'theimc_description'}
+[0.001835] (-) JobUnselected: {'identifier': 'theimc_navigation2'}
+[0.001900] (-) JobUnselected: {'identifier': 'theimc_teleop'}
+[0.001973] (theimc_bt_nodes) JobQueued: {'identifier': 'theimc_bt_nodes', 'dependencies': OrderedDict([('interfaces_pkg', '/home/jeff/theimc_robot/install/interfaces_pkg'), ('theimc_navigation2', '/home/jeff/theimc_robot/install/theimc_navigation2')])}
+[0.002059] (theimc_bt_nodes) JobStarted: {'identifier': 'theimc_bt_nodes'}
+[0.024434] (theimc_bt_nodes) JobProgress: {'identifier': 'theimc_bt_nodes', 'progress': 'cmake'}
+[0.026026] (theimc_bt_nodes) JobProgress: {'identifier': 'theimc_bt_nodes', 'progress': 'build'}
+[0.027894] (theimc_bt_nodes) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/jeff/theimc_robot/build/theimc_bt_nodes', '--', '-j6', '-l6'], 'cwd': '/home/jeff/theimc_robot/build/theimc_bt_nodes', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('USER', 'jeff'), ('SSH_CLIENT', '192.168.0.8 36694 22'), ('LC_TIME', 'ko_KR.UTF-8'), ('XDG_SESSION_TYPE', 'tty'), ('GIT_ASKPASS', '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/extensions/git/dist/askpass.sh'), ('SHLVL', '2'), ('LD_LIBRARY_PATH', '/home/jeff/theimc_robot/install/theimc_navigation2/lib:/home/jeff/theimc_robot/install/interfaces_pkg/lib:/home/jeff/theimc_robot/install/theimc_bt_nodes/lib:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/lib'), ('BROWSER', '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/helpers/browser.sh'), ('MOTD_SHOWN', 'pam'), ('HOME', '/home/jeff'), ('TERM_PROGRAM_VERSION', '1.120.0'), ('VSCODE_IPC_HOOK_CLI', '/run/user/1002/vscode-ipc-cdbf7a63-5029-43bb-875d-0d1c1f1959c7.sock'), ('ROS_PYTHON_VERSION', '3'), ('VSCODE_GIT_ASKPASS_MAIN', '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/extensions/git/dist/askpass-main.js'), ('LC_MONETARY', 'ko_KR.UTF-8'), ('VSCODE_GIT_ASKPASS_NODE', '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/node'), ('VSCODE_PYTHON_AUTOACTIVATE_GUARD', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1002/bus'), ('COLORTERM', 'truecolor'), ('COLCON_PREFIX_PATH', '/home/jeff/theimc_robot/install'), ('ROS_DISTRO', 'humble'), ('LOGNAME', 'jeff'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('TERM', 'xterm-256color'), ('XDG_SESSION_ID', '2'), ('ROS_LOCALHOST_ONLY', '0'), ('PATH', '/home/jeff/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/jeff/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/remote-cli:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin'), ('LC_ADDRESS', 'ko_KR.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1002'), ('LANG', 'en_US.UTF-8'), ('LC_TELEPHONE', 'ko_KR.UTF-8'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('VSCODE_GIT_IPC_HANDLE', '/run/user/1002/vscode-git-e19acbb9aa.sock'), ('TERM_PROGRAM', 'vscode'), ('ROS_DOMAIN_ID', '25'), ('AMENT_PREFIX_PATH', '/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/sllidar_ros2:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/interfaces_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'ko_KR.UTF-8'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('LC_MEASUREMENT', 'ko_KR.UTF-8'), ('LC_IDENTIFICATION', 'ko_KR.UTF-8'), ('VSCODE_GIT_ASKPASS_EXTRA_ARGS', ''), ('PWD', '/home/jeff/theimc_robot/build/theimc_bt_nodes'), ('LC_ALL', 'en_US.UTF-8'), ('SSH_CONNECTION', '192.168.0.8 36694 192.168.0.81 22'), ('XDG_DATA_DIRS', '/usr/share/gnome:/usr/local/share:/usr/share:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/jeff/theimc_robot/build/theimc_teleop:/home/jeff/theimc_robot/install/theimc_teleop/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/theimc_bringup:/home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/localizer_server:/home/jeff/theimc_robot/install/localizer_server/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/decision_making_pkg:/home/jeff/theimc_robot/install/decision_making_pkg/lib/python3.10/site-packages:/home/jeff/theimc_robot/install/interfaces_pkg/local/lib/python3.10/dist-packages:/home/jeff/theimc_robot/build/debug_pkg:/home/jeff/theimc_robot/install/debug_pkg/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/camera_perception_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'ko_KR.UTF-8'), ('LC_PAPER', 'ko_KR.UTF-8'), ('COLCON', '1'), ('CMAKE_PREFIX_PATH', '/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/interfaces_pkg:/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/sllidar_ros2:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble')]), 'shell': False}
+[0.099387] (-) TimerEvent: {}
+[0.137019] (theimc_bt_nodes) StdoutLine: {'line': b'\x1b[35m\x1b[1mConsolidate compiler generated dependencies of target theimc_bt_nodes\x1b[0m\n'}
+[0.146966] (theimc_bt_nodes) StdoutLine: {'line': b'[ 10%] Built target mission_bt_runner\n'}
+[0.199560] (-) TimerEvent: {}
+[0.263776] (theimc_bt_nodes) StdoutLine: {'line': b'[ 15%] \x1b[32mBuilding CXX object CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o\x1b[0m\n'}
+[0.299738] (-) TimerEvent: {}
+[0.400402] (-) TimerEvent: {}
+[0.501080] (-) TimerEvent: {}
+[0.601765] (-) TimerEvent: {}
+[0.702437] (-) TimerEvent: {}
+[0.803107] (-) TimerEvent: {}
+[0.903778] (-) TimerEvent: {}
+[1.004458] (-) TimerEvent: {}
+[1.105141] (-) TimerEvent: {}
+[1.205865] (-) TimerEvent: {}
+[1.306534] (-) TimerEvent: {}
+[1.407197] (-) TimerEvent: {}
+[1.507884] (-) TimerEvent: {}
+[1.608549] (-) TimerEvent: {}
+[1.709221] (-) TimerEvent: {}
+[1.809910] (-) TimerEvent: {}
+[1.910605] (-) TimerEvent: {}
+[2.011292] (-) TimerEvent: {}
+[2.111969] (-) TimerEvent: {}
+[2.212697] (-) TimerEvent: {}
+[2.313562] (-) TimerEvent: {}
+[2.414409] (-) TimerEvent: {}
+[2.515237] (-) TimerEvent: {}
+[2.616070] (-) TimerEvent: {}
+[2.716957] (-) TimerEvent: {}
+[2.817768] (-) TimerEvent: {}
+[2.918558] (-) TimerEvent: {}
+[3.019314] (-) TimerEvent: {}
+[3.120027] (-) TimerEvent: {}
+[3.220885] (-) TimerEvent: {}
+[3.321710] (-) TimerEvent: {}
+[3.422408] (-) TimerEvent: {}
+[3.523148] (-) TimerEvent: {}
+[3.623905] (-) TimerEvent: {}
+[3.724661] (-) TimerEvent: {}
+[3.825476] (-) TimerEvent: {}
+[3.926229] (-) TimerEvent: {}
+[4.027057] (-) TimerEvent: {}
+[4.127875] (-) TimerEvent: {}
+[4.228674] (-) TimerEvent: {}
+[4.329456] (-) TimerEvent: {}
+[4.430288] (-) TimerEvent: {}
+[4.531119] (-) TimerEvent: {}
+[4.631937] (-) TimerEvent: {}
+[4.732762] (-) TimerEvent: {}
+[4.833585] (-) TimerEvent: {}
+[4.934437] (-) TimerEvent: {}
+[5.035275] (-) TimerEvent: {}
+[5.136125] (-) TimerEvent: {}
+[5.236990] (-) TimerEvent: {}
+[5.337825] (-) TimerEvent: {}
+[5.438649] (-) TimerEvent: {}
+[5.539448] (-) TimerEvent: {}
+[5.640242] (-) TimerEvent: {}
+[5.741029] (-) TimerEvent: {}
+[5.773673] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:24:15:\x1b[m\x1b[K \x1b[01;31m\x1b[Kerror: \x1b[m\x1b[Kredefinition of \xe2\x80\x98\x1b[01m\x1b[Kstatic BT::PortsList theimc_bt_nodes::IsObstacleDetected::providedPorts()\x1b[m\x1b[K\xe2\x80\x99\n'}
+[5.774416] (theimc_bt_nodes) StderrLine: {'line': b'   24 | BT::PortsList \x1b[01;31m\x1b[KIsObstacleDetected\x1b[m\x1b[K::providedPorts()\n'}
+[5.774747] (theimc_bt_nodes) StderrLine: {'line': b'      |               \x1b[01;31m\x1b[K^~~~~~~~~~~~~~~~~~\x1b[m\x1b[K\n'}
+[5.775036] (theimc_bt_nodes) StderrLine: {'line': b'In file included from \x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:1\x1b[m\x1b[K:\n'}
+[5.775316] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/is_obstacle_detected.hpp:23:24:\x1b[m\x1b[K \x1b[01;36m\x1b[Knote: \x1b[m\x1b[K\xe2\x80\x98\x1b[01m\x1b[Kstatic BT::PortsList theimc_bt_nodes::IsObstacleDetected::providedPorts()\x1b[m\x1b[K\xe2\x80\x99 previously defined here\n'}
+[5.775588] (theimc_bt_nodes) StderrLine: {'line': b'   23 |   static BT::PortsList \x1b[01;36m\x1b[KprovidedPorts\x1b[m\x1b[K()\n'}
+[5.775848] (theimc_bt_nodes) StderrLine: {'line': b'      |                        \x1b[01;36m\x1b[K^~~~~~~~~~~~~\x1b[m\x1b[K\n'}
+[5.779029] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:\x1b[m\x1b[K In member function \xe2\x80\x98\x1b[01m\x1b[Kvirtual BT::NodeStatus theimc_bt_nodes::IsObstacleDetected::tick()\x1b[m\x1b[K\xe2\x80\x99:\n'}
+[5.779542] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:15:\x1b[m\x1b[K \x1b[01;31m\x1b[Kerror: \x1b[m\x1b[Kexpected unqualified-id before \xe2\x80\x98\x1b[01m\x1b[K==\x1b[m\x1b[K\xe2\x80\x99 token\n'}
+[5.779827] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   for (size_t \x1b[01;31m\x1b[K==\x1b[m\x1b[K 0; i < current_scan->ranges.size(); ++i) {\n'}
+[5.780092] (theimc_bt_nodes) StderrLine: {'line': b'      |               \x1b[01;31m\x1b[K^~\x1b[m\x1b[K\n'}
+[5.780340] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:14:\x1b[m\x1b[K \x1b[01;31m\x1b[Kerror: \x1b[m\x1b[Kexpected \xe2\x80\x98\x1b[01m\x1b[K;\x1b[m\x1b[K\xe2\x80\x99 before \xe2\x80\x98\x1b[01m\x1b[K==\x1b[m\x1b[K\xe2\x80\x99 token\n'}
+[5.780644] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   for (size_t\x1b[01;31m\x1b[K \x1b[m\x1b[K\x1b[32m\x1b[K==\x1b[m\x1b[K 0; i < current_scan->ranges.size(); ++i) {\n'}
+[5.780897] (theimc_bt_nodes) StderrLine: {'line': b'      |              \x1b[01;31m\x1b[K^\x1b[m\x1b[K\x1b[32m\x1b[K~~\x1b[m\x1b[K\n'}
+[5.781140] (theimc_bt_nodes) StderrLine: {'line': b'      |              \x1b[32m\x1b[K;\x1b[m\x1b[K\n'}
+[5.781383] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:15:\x1b[m\x1b[K \x1b[01;31m\x1b[Kerror: \x1b[m\x1b[Kexpected primary-expression before \xe2\x80\x98\x1b[01m\x1b[K==\x1b[m\x1b[K\xe2\x80\x99 token\n'}
+[5.781683] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   for (size_t \x1b[01;31m\x1b[K==\x1b[m\x1b[K 0; i < current_scan->ranges.size(); ++i) {\n'}
+[5.781933] (theimc_bt_nodes) StderrLine: {'line': b'      |               \x1b[01;31m\x1b[K^~\x1b[m\x1b[K\n'}
+[5.792778] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:21:\x1b[m\x1b[K \x1b[01;31m\x1b[Kerror: \x1b[m\x1b[K\xe2\x80\x98\x1b[01m\x1b[Ki\x1b[m\x1b[K\xe2\x80\x99 was not declared in this scope\n'}
+[5.793213] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   for (size_t == 0; \x1b[01;31m\x1b[Ki\x1b[m\x1b[K < current_scan->ranges.size(); ++i) {\n'}
+[5.793509] (theimc_bt_nodes) StderrLine: {'line': b'      |                     \x1b[01;31m\x1b[K^\x1b[m\x1b[K\n'}
+[5.793764] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:52:\x1b[m\x1b[K \x1b[01;31m\x1b[Kerror: \x1b[m\x1b[Kexpected \xe2\x80\x98\x1b[01m\x1b[K)\x1b[m\x1b[K\xe2\x80\x99 before \xe2\x80\x98\x1b[01m\x1b[K;\x1b[m\x1b[K\xe2\x80\x99 token\n'}
+[5.794011] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   for \x1b[34m\x1b[K(\x1b[m\x1b[Ksize_t == 0; i < current_scan->ranges.size()\x1b[01;31m\x1b[K;\x1b[m\x1b[K ++i) {\n'}
+[5.794255] (theimc_bt_nodes) StderrLine: {'line': b'      |       \x1b[34m\x1b[K~\x1b[m\x1b[K                                            \x1b[01;31m\x1b[K^\x1b[m\x1b[K\n'}
+[5.794558] (theimc_bt_nodes) StderrLine: {'line': b'      |                                                    \x1b[32m\x1b[K)\x1b[m\x1b[K\n'}
+[5.794813] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:3:\x1b[m\x1b[K \x1b[01;35m\x1b[Kwarning: \x1b[m\x1b[Kthis \xe2\x80\x98\x1b[01m\x1b[Kfor\x1b[m\x1b[K\xe2\x80\x99 clause does not guard... [\x1b[01;35m\x1b[K\x1b]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wmisleading-indentation\x07-Wmisleading-indentation\x1b]8;;\x07\x1b[m\x1b[K]\n'}
+[5.795081] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   \x1b[01;35m\x1b[Kfor\x1b[m\x1b[K (size_t == 0; i < current_scan->ranges.size(); ++i) {\n'}
+[5.795325] (theimc_bt_nodes) StderrLine: {'line': b'      |   \x1b[01;35m\x1b[K^~~\x1b[m\x1b[K\n'}
+[5.795564] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:54:\x1b[m\x1b[K \x1b[01;36m\x1b[Knote: \x1b[m\x1b[K...this statement, but the latter is misleadingly indented as if it were guarded by the \xe2\x80\x98\x1b[01m\x1b[Kfor\x1b[m\x1b[K\xe2\x80\x99\n'}
+[5.795812] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   for (size_t == 0; i < current_scan->ranges.size(); \x1b[01;36m\x1b[K++\x1b[m\x1b[Ki) {\n'}
+[5.796048] (theimc_bt_nodes) StderrLine: {'line': b'      |                                                      \x1b[01;36m\x1b[K^~\x1b[m\x1b[K\n'}
+[5.804346] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:56:\x1b[m\x1b[K \x1b[01;31m\x1b[Kerror: \x1b[m\x1b[K\xe2\x80\x98\x1b[01m\x1b[Ki\x1b[m\x1b[K\xe2\x80\x99 was not declared in this scope\n'}
+[5.804719] (theimc_bt_nodes) StderrLine: {'line': b'   61 |   for (size_t == 0; i < current_scan->ranges.size(); ++\x1b[01;31m\x1b[Ki\x1b[m\x1b[K) {\n'}
+[5.804975] (theimc_bt_nodes) StderrLine: {'line': b'      |                                                        \x1b[01;31m\x1b[K^\x1b[m\x1b[K\n'}
+[5.805250] (theimc_bt_nodes) StderrLine: {'line': b'\x1b[01m\x1b[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:60:10:\x1b[m\x1b[K \x1b[01;35m\x1b[Kwarning: \x1b[m\x1b[Kunused variable \xe2\x80\x98\x1b[01m\x1b[Kfov_rad\x1b[m\x1b[K\xe2\x80\x99 [\x1b[01;35m\x1b[K\x1b]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable\x07-Wunused-variable\x1b]8;;\x07\x1b[m\x1b[K]\n'}
+[5.805579] (theimc_bt_nodes) StderrLine: {'line': b'   60 |   double \x1b[01;35m\x1b[Kfov_rad\x1b[m\x1b[K = 45.0 * M_PI / 180.0;  // 45 degrees in radians\n'}
+[5.805835] (theimc_bt_nodes) StderrLine: {'line': b'      |          \x1b[01;35m\x1b[K^~~~~~~\x1b[m\x1b[K\n'}
+[5.841131] (-) TimerEvent: {}
+[5.941734] (-) TimerEvent: {}
+[6.042448] (-) TimerEvent: {}
+[6.143223] (-) TimerEvent: {}
+[6.244003] (-) TimerEvent: {}
+[6.344817] (-) TimerEvent: {}
+[6.445643] (-) TimerEvent: {}
+[6.546446] (-) TimerEvent: {}
+[6.647235] (-) TimerEvent: {}
+[6.748026] (-) TimerEvent: {}
+[6.848825] (-) TimerEvent: {}
+[6.949644] (-) TimerEvent: {}
+[7.050470] (-) TimerEvent: {}
+[7.151326] (-) TimerEvent: {}
+[7.252191] (-) TimerEvent: {}
+[7.353003] (-) TimerEvent: {}
+[7.453864] (-) TimerEvent: {}
+[7.554692] (-) TimerEvent: {}
+[7.655505] (-) TimerEvent: {}
+[7.756333] (-) TimerEvent: {}
+[7.857140] (-) TimerEvent: {}
+[7.957979] (-) TimerEvent: {}
+[8.058783] (-) TimerEvent: {}
+[8.159601] (-) TimerEvent: {}
+[8.260425] (-) TimerEvent: {}
+[8.361231] (-) TimerEvent: {}
+[8.462069] (-) TimerEvent: {}
+[8.562881] (-) TimerEvent: {}
+[8.663692] (-) TimerEvent: {}
+[8.764500] (-) TimerEvent: {}
+[8.865327] (-) TimerEvent: {}
+[8.966156] (-) TimerEvent: {}
+[9.066960] (-) TimerEvent: {}
+[9.167771] (-) TimerEvent: {}
+[9.268579] (-) TimerEvent: {}
+[9.369430] (-) TimerEvent: {}
+[9.470256] (-) TimerEvent: {}
+[9.571078] (-) TimerEvent: {}
+[9.671868] (-) TimerEvent: {}
+[9.772667] (-) TimerEvent: {}
+[9.873494] (-) TimerEvent: {}
+[9.974288] (-) TimerEvent: {}
+[10.075081] (-) TimerEvent: {}
+[10.175885] (-) TimerEvent: {}
+[10.276712] (-) TimerEvent: {}
+[10.377545] (-) TimerEvent: {}
+[10.478359] (-) TimerEvent: {}
+[10.579191] (-) TimerEvent: {}
+[10.680014] (-) TimerEvent: {}
+[10.780842] (-) TimerEvent: {}
+[10.881679] (-) TimerEvent: {}
+[10.982497] (-) TimerEvent: {}
+[11.083295] (-) TimerEvent: {}
+[11.184364] (-) TimerEvent: {}
+[11.285203] (-) TimerEvent: {}
+[11.386043] (-) TimerEvent: {}
+[11.470074] (theimc_bt_nodes) StderrLine: {'line': b'gmake[2]: *** [CMakeFiles/theimc_bt_nodes.dir/build.make:286: CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o] Error 1\n'}
+[11.470923] (theimc_bt_nodes) StderrLine: {'line': b'gmake[1]: *** [CMakeFiles/Makefile2:139: CMakeFiles/theimc_bt_nodes.dir/all] Error 2\n'}
+[11.471496] (theimc_bt_nodes) StderrLine: {'line': b'gmake: *** [Makefile:146: all] Error 2\n'}
+[11.477569] (theimc_bt_nodes) CommandEnded: {'returncode': 2}
+[11.486245] (-) TimerEvent: {}
+[11.528822] (theimc_bt_nodes) JobEnded: {'identifier': 'theimc_bt_nodes', 'rc': 2}
+[11.540124] (-) EventReactorShutdown: {}

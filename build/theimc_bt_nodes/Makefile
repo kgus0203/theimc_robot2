@@ -343,6 +343,30 @@ src/is_battery_low.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s
 .PHONY : src/is_battery_low.cpp.s
 
+src/is_obstacle_detected.o: src/is_obstacle_detected.cpp.o
+.PHONY : src/is_obstacle_detected.o
+
+# target to build an object file
+src/is_obstacle_detected.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o
+.PHONY : src/is_obstacle_detected.cpp.o
+
+src/is_obstacle_detected.i: src/is_obstacle_detected.cpp.i
+.PHONY : src/is_obstacle_detected.i
+
+# target to preprocess a source file
+src/is_obstacle_detected.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.i
+.PHONY : src/is_obstacle_detected.cpp.i
+
+src/is_obstacle_detected.s: src/is_obstacle_detected.cpp.s
+.PHONY : src/is_obstacle_detected.s
+
+# target to generate assembly for a file
+src/is_obstacle_detected.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.s
+.PHONY : src/is_obstacle_detected.cpp.s
+
 src/mission_bt_runner.o: src/mission_bt_runner.cpp.o
 .PHONY : src/mission_bt_runner.o
 
@@ -639,6 +663,9 @@ help:
 	@echo "... src/is_battery_low.o"
 	@echo "... src/is_battery_low.i"
 	@echo "... src/is_battery_low.s"
+	@echo "... src/is_obstacle_detected.o"
+	@echo "... src/is_obstacle_detected.i"
+	@echo "... src/is_obstacle_detected.s"
 	@echo "... src/mission_bt_runner.o"
 	@echo "... src/mission_bt_runner.i"
 	@echo "... src/mission_bt_runner.s"

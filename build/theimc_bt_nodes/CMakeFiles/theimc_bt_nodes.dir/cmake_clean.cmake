@@ -9,6 +9,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o.d"
   "CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o"
   "CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o.d"
+  "CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o"
+  "CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o.d"
   "CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o"
   "CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o.d"
   "CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o"

@@ -13,6 +13,7 @@
 #include "theimc_bt_nodes/save_current_pose.hpp"
 #include "theimc_bt_nodes/wait_for_charge.hpp"
 #include "theimc_bt_nodes/toggle_docking.hpp"
+#include "theimc_bt_nodes/is_obstacle_detected.hpp"
 
 
 BT_REGISTER_NODES(factory)
@@ -31,4 +32,5 @@ BT_REGISTER_NODES(factory)
   factory.registerNodeType<theimc_bt_nodes::SaveCurrentPose>("SaveCurrentPose");
   factory.registerNodeType<theimc_bt_nodes::WaitForCharge>("WaitForCharge");
   factory.registerNodeType<theimc_bt_nodes::ToggleDocking>("ToggleDocking");
+  factory.registerNodeType<theimc_bt_nodes::IsObstacleDetected>("IsObstacleDetected");
 }

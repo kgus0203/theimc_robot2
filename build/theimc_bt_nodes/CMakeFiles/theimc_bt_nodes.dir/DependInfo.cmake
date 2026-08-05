@@ -13,6 +13,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_rail_pose.cpp" "CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o" "gcc" "CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o.d"
   "/home/jeff/theimc_robot/src/theimc_bt_nodes/src/go_to_pose.cpp" "CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o" "gcc" "CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o.d"
   "/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp" "CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o" "gcc" "CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o.d"
+  "/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp" "CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o" "gcc" "CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o.d"
   "/home/jeff/theimc_robot/src/theimc_bt_nodes/src/publish_rail_command.cpp" "CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o" "gcc" "CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o.d"
   "/home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_approach.cpp" "CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o" "gcc" "CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o.d"
   "/home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp" "CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o" "gcc" "CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o.d"

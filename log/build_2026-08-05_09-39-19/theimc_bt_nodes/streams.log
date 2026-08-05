@@ -1,0 +1,45 @@
+[0.028s] Invoking command in '/home/jeff/theimc_robot/build/theimc_bt_nodes': CMAKE_PREFIX_PATH=/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/interfaces_pkg:/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/sllidar_ros2:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble LD_LIBRARY_PATH=/home/jeff/theimc_robot/install/theimc_navigation2/lib:/home/jeff/theimc_robot/install/interfaces_pkg/lib:/home/jeff/theimc_robot/install/theimc_bt_nodes/lib:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/lib /usr/bin/cmake --build /home/jeff/theimc_robot/build/theimc_bt_nodes -- -j6 -l6
+[0.135s] [35m[1mConsolidate compiler generated dependencies of target theimc_bt_nodes[0m
+[0.145s] [ 10%] Built target mission_bt_runner
+[0.262s] [ 15%] [32mBuilding CXX object CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o[0m
+[5.772s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:24:15:[m[K [01;31m[Kerror: [m[Kredefinition of ‘[01m[Kstatic BT::PortsList theimc_bt_nodes::IsObstacleDetected::providedPorts()[m[K’
+[5.773s]    24 | BT::PortsList [01;31m[KIsObstacleDetected[m[K::providedPorts()
+[5.773s]       |               [01;31m[K^~~~~~~~~~~~~~~~~~[m[K
+[5.773s] In file included from [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:1[m[K:
+[5.773s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/is_obstacle_detected.hpp:23:24:[m[K [01;36m[Knote: [m[K‘[01m[Kstatic BT::PortsList theimc_bt_nodes::IsObstacleDetected::providedPorts()[m[K’ previously defined here
+[5.774s]    23 |   static BT::PortsList [01;36m[KprovidedPorts[m[K()
+[5.774s]       |                        [01;36m[K^~~~~~~~~~~~~[m[K
+[5.777s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:[m[K In member function ‘[01m[Kvirtual BT::NodeStatus theimc_bt_nodes::IsObstacleDetected::tick()[m[K’:
+[5.778s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:15:[m[K [01;31m[Kerror: [m[Kexpected unqualified-id before ‘[01m[K==[m[K’ token
+[5.778s]    61 |   for (size_t [01;31m[K==[m[K 0; i < current_scan->ranges.size(); ++i) {
+[5.778s]       |               [01;31m[K^~[m[K
+[5.778s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:14:[m[K [01;31m[Kerror: [m[Kexpected ‘[01m[K;[m[K’ before ‘[01m[K==[m[K’ token
+[5.779s]    61 |   for (size_t[01;31m[K [m[K[32m[K==[m[K 0; i < current_scan->ranges.size(); ++i) {
+[5.779s]       |              [01;31m[K^[m[K[32m[K~~[m[K
+[5.779s]       |              [32m[K;[m[K
+[5.780s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:15:[m[K [01;31m[Kerror: [m[Kexpected primary-expression before ‘[01m[K==[m[K’ token
+[5.780s]    61 |   for (size_t [01;31m[K==[m[K 0; i < current_scan->ranges.size(); ++i) {
+[5.780s]       |               [01;31m[K^~[m[K
+[5.791s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:21:[m[K [01;31m[Kerror: [m[K‘[01m[Ki[m[K’ was not declared in this scope
+[5.791s]    61 |   for (size_t == 0; [01;31m[Ki[m[K < current_scan->ranges.size(); ++i) {
+[5.792s]       |                     [01;31m[K^[m[K
+[5.792s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:52:[m[K [01;31m[Kerror: [m[Kexpected ‘[01m[K)[m[K’ before ‘[01m[K;[m[K’ token
+[5.792s]    61 |   for [34m[K([m[Ksize_t == 0; i < current_scan->ranges.size()[01;31m[K;[m[K ++i) {
+[5.792s]       |       [34m[K~[m[K                                            [01;31m[K^[m[K
+[5.793s]       |                                                    [32m[K)[m[K
+[5.793s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:3:[m[K [01;35m[Kwarning: [m[Kthis ‘[01m[Kfor[m[K’ clause does not guard... [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wmisleading-indentation-Wmisleading-indentation]8;;[m[K]
+[5.793s]    61 |   [01;35m[Kfor[m[K (size_t == 0; i < current_scan->ranges.size(); ++i) {
+[5.793s]       |   [01;35m[K^~~[m[K
+[5.794s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:54:[m[K [01;36m[Knote: [m[K...this statement, but the latter is misleadingly indented as if it were guarded by the ‘[01m[Kfor[m[K’
+[5.794s]    61 |   for (size_t == 0; i < current_scan->ranges.size(); [01;36m[K++[m[Ki) {
+[5.794s]       |                                                      [01;36m[K^~[m[K
+[5.803s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:61:56:[m[K [01;31m[Kerror: [m[K‘[01m[Ki[m[K’ was not declared in this scope
+[5.803s]    61 |   for (size_t == 0; i < current_scan->ranges.size(); ++[01;31m[Ki[m[K) {
+[5.803s]       |                                                        [01;31m[K^[m[K
+[5.803s] [01m[K/home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_obstacle_detected.cpp:60:10:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Kfov_rad[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+[5.804s]    60 |   double [01;35m[Kfov_rad[m[K = 45.0 * M_PI / 180.0;  // 45 degrees in radians
+[5.804s]       |          [01;35m[K^~~~~~~[m[K
+[11.469s] gmake[2]: *** [CMakeFiles/theimc_bt_nodes.dir/build.make:286: CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o] Error 1
+[11.469s] gmake[1]: *** [CMakeFiles/Makefile2:139: CMakeFiles/theimc_bt_nodes.dir/all] Error 2
+[11.470s] gmake: *** [Makefile:146: all] Error 2
+[11.476s] Invoked command in '/home/jeff/theimc_robot/build/theimc_bt_nodes' returned '2': CMAKE_PREFIX_PATH=/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/interfaces_pkg:/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/sllidar_ros2:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble LD_LIBRARY_PATH=/home/jeff/theimc_robot/install/theimc_navigation2/lib:/home/jeff/theimc_robot/install/interfaces_pkg/lib:/home/jeff/theimc_robot/install/theimc_bt_nodes/lib:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/lib /usr/bin/cmake --build /home/jeff/theimc_robot/build/theimc_bt_nodes -- -j6 -l6
