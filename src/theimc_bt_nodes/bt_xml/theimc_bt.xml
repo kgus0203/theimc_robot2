@@ -99,6 +99,7 @@
 
             <!-- 모든 레일 완료 후 홈 복귀 -->
             <GoToPose x="1.2145" y="-0.7806" yaw="3.1125"/>
+            
             <SetBlackboard output_key="return_mode" value="MISSION_COMPLETE"/>
           </Sequence>
 
@@ -135,6 +136,7 @@
 
         <!-- Default Case: MISSION_COMPLETE 등 그 외 상황 시 홈 주행 -->
         <GoToPose x="1.2145" y="-0.7806" yaw="3.1125"/>
+        <ToggleDocking enable="true"/>
       </Switch3>
     </Sequence>
   </BehaviorTree>
@@ -200,10 +202,10 @@
           <PublishRailCommand command="STOP"/>
           <AlwaysSuccess/>
         </Sequence>
-      </Fallback>
-      <PublishRailCommand command="STOP"/>
-      <WaitSeconds seconds="5.0"/>
-    </Sequence>
+        </Fallback>
+        <PublishRailCommand command="STOP"/>
+        <WaitSeconds seconds="5.0"/>
+      </Sequence>
 
       <!-- 5. 레일 탈출 및 STM 시리얼(OUT_RAIL) 확인 -->
       <PublishRailCommand command="BACK"/>
@@ -215,6 +217,7 @@
       <WaitSeconds seconds="10.0"/>
       <!-- 안전거리 후진 3초: /cmd_vel linear.x=-0.25 m/s, 완료/halt 시 0 발행 -->
       <DriveCmdVel linear_x="-0.25" angular_z="0.0" seconds="3.0"/>
+
       <SetBlackboard output_key="mission_return_mode" value="DIRECT"/>
     </Sequence>
   </BehaviorTree>

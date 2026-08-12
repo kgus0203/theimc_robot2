@@ -889,4 +889,10 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: \
  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__builder.hpp \
  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__traits.hpp \
  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__type_support.hpp \
- /opt/ros/humble/include/std_srvs/std_srvs/msg/rosidl_generator_cpp__visibility_control.hpp
+ /opt/ros/humble/include/std_srvs/std_srvs/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/is_obstacle_detected.hpp \
+ /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/laser_scan.hpp \
+ /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/detail/laser_scan__struct.hpp \
+ /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/detail/laser_scan__builder.hpp \
+ /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/detail/laser_scan__traits.hpp \
+ /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/detail/laser_scan__type_support.hpp

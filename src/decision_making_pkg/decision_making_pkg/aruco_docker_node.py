@@ -11,7 +11,7 @@ class ArucoDockerNode(Node):
         self.is_docking_active = False
 
         # --- [1] 목표 위치 및 각도 파라미터 ---
-        self.target_z = 0.2     # 전후 거리 (20cm)
+        self.target_z = 0.5     # 전후 거리 (20cm)
         self.target_x = 0.0   # 좌우 오프셋
         self.target_yaw = 0.0   # 목표 각도 (마커와 정면으로 평행)
         
