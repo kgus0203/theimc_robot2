@@ -13,7 +13,11 @@
 #include "theimc_bt_nodes/save_current_pose.hpp"
 #include "theimc_bt_nodes/wait_for_charge.hpp"
 #include "theimc_bt_nodes/toggle_docking.hpp"
-#include "theimc_bt_nodes/is_obstacle_detected.hpp"
+#include "theimc_bt_nodes/is_rail_obstacle.hpp"
+#include "theimc_bt_nodes/wait_for_rail_clear.hpp"
+#include "theimc_bt_nodes/get_location_pose.hpp"
+#include "theimc_bt_nodes/rail_enter.hpp"
+#include "theimc_bt_nodes/rail_exit.hpp"
 
 
 BT_REGISTER_NODES(factory)
@@ -32,5 +36,9 @@ BT_REGISTER_NODES(factory)
   factory.registerNodeType<theimc_bt_nodes::SaveCurrentPose>("SaveCurrentPose");
   factory.registerNodeType<theimc_bt_nodes::WaitForCharge>("WaitForCharge");
   factory.registerNodeType<theimc_bt_nodes::ToggleDocking>("ToggleDocking");
-  factory.registerNodeType<theimc_bt_nodes::IsObstacleDetected>("IsObstacleDetected");
+  factory.registerNodeType<theimc_bt_nodes::IsRailObstacle>("IsRailObstacle");
+  factory.registerNodeType<theimc_bt_nodes::WaitForRailClear>("WaitForRailClear");
+  factory.registerNodeType<theimc_bt_nodes::GetLocationPose>("GetLocationPose");
+  factory.registerNodeType<theimc_bt_nodes::RailEnter>("RailEnter");
+  factory.registerNodeType<theimc_bt_nodes::RailExit>("RailExit");
 }

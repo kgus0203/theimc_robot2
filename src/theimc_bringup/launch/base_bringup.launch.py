@@ -143,7 +143,7 @@ def generate_launch_description():
         output='screen',
         parameters=[params_twist_mux],
         remappings=[
-            ('cmd_vel_out', '/cmd_vel'), # 최종 결과를 BringUp 노드가 듣고 있는 /cmd_vel로 쏴줍니다.
+            ('cmd_vel_out', '/cmd_vel'), 
         ]
     )
 
@@ -266,7 +266,7 @@ def generate_launch_description():
 
     launch_description = LaunchDescription(ARGUMENTS)
     launch_description.add_action(robot_state_publisher_cmd)
-    # launch_description.add_action(twist_mux_cmd)
+    launch_description.add_action(twist_mux_cmd)
     launch_description.add_action(motor_drive_cmd)
     launch_description.add_action(ydlidar_cmd)
     launch_description.add_action(scan_filter_cmd)

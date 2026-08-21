@@ -35,7 +35,11 @@ add_library(${PROJECT_NAME} SHARED
   src/wait_for_charge.cpp
   src/save_current_pose.cpp
   src/toggle_docking.cpp
-  src/is_obstacle_detected.cpp
+  src/is_rail_obstacle.cpp
+  src/wait_for_rail_clear.cpp
+  src/get_location_pose.cpp
+  src/rail_enter.cpp
+  src/rail_exit.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} yaml-cpp)

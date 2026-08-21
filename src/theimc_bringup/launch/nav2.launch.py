@@ -8,7 +8,8 @@ from launch.actions import TimerAction, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetRemap
+from launch.actions import GroupAction
 
 
 ARGUMENTS = [
@@ -190,6 +191,13 @@ def generate_launch_description():
             'autostart': 'true'
         }.items()
     )
+    nav2_remapping_group = GroupAction(
+        actions=[
+            SetRemap(src='/cmd_vel', dst='/cmd_vel_nav'),
+            SetRemap(src='cmd_vel', dst='/cmd_vel_nav'),
+            nav2_bringup_launch
+        ]
+    )
 
     # ---------------------------------------------------------
     # Last Pose Manager
@@ -236,7 +244,7 @@ def generate_launch_description():
     ld.add_action(
         TimerAction(
             period=10.0,
-            actions=[nav2_bringup_launch]
+            actions=[nav2_remapping_group]
         )
     )
     

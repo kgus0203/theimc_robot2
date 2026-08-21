@@ -1,0 +1,4 @@
+{
+    "cmake.sourceDirectory": "/home/jeff/theimc_robot/src/interfaces_pkg",
+    "C_Cpp.errorSquiggles": "enabled"
+}

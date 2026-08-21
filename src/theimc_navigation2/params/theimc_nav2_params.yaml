@@ -118,7 +118,7 @@ bt_navigator_rclcpp_node:
 
 controller_server:
   ros__parameters:
-    cmd_vel_topic: /cmd_vel
+    cmd_vel_topic: /cmd_vel_nav
     use_sim_time: false
 
     # 기존 주기 유지
@@ -500,7 +500,7 @@ planner_server_rclcpp_node:
 
 behavior_server:
   ros__parameters:
-    cmd_vel_topic: /cmd_vel
+    cmd_vel_topic: /cmd_vel_nav
 
     costmap_topic: local_costmap/costmap_raw
     footprint_topic: local_costmap/published_footprint

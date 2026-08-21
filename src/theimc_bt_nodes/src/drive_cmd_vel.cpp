@@ -11,7 +11,7 @@ DriveCmdVel::DriveCmdVel(
 : BT::StatefulActionNode(xml_tag_name, config)
 {
   node_ = config.blackboard->get<rclcpp::Node::SharedPtr>("node");
-  publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", rclcpp::QoS(10));
+  publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel_bt", rclcpp::QoS(10));
 }
 
 BT::PortsList DriveCmdVel::providedPorts()

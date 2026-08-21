@@ -125,7 +125,7 @@ def main():
     node = rclpy.create_node('teleop_keyboard')
     
     # 퍼블리셔 선언
-    pub = node.create_publisher(Twist, 'cmd_vel', qos)
+    pub = node.create_publisher(Twist, 'cmd_vel_teleop', qos)
     pub_cmd_rail = node.create_publisher(Twist, 'cmd_rail', qos)
     pub_rail_cmd = node.create_publisher(String, 'rail_command', qos) # String 퍼블리셔 추가
 
