@@ -1,1551 +1,720 @@
-#!/usr/bin/env python3
+"""MQTT to ROS 2 bridge used by the web robot backend.
+
+The MQTT callbacks run in paho's thread.  They never call rclpy directly;
+commands are copied to a queue and consumed by a ROS timer instead.
+"""
+
 import json
 import math
-import time
+import os
 import queue
-from typing import Optional, Dict, Any, List
+import threading
+import time
+from typing import Any, Dict, Optional
 
 import paho.mqtt.client as mqtt
-
 import rclpy
-from rclpy.node import Node
-from rclpy.action import ActionClient
-
+from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from nav2_msgs.action import NavigateToPose
-from action_msgs.msg import GoalStatus
-from std_srvs.srv import Trigger
+from nav_msgs.msg import Path
+from rclpy.action import ActionClient
+from rclpy.node import Node
+from sensor_msgs.msg import BatteryState, JointState
 from std_msgs.msg import Bool, String
-
+from std_srvs.srv import Trigger
 
 from interfaces_pkg.action import RailApproach
 
 
-# ============================================================
-# MQTT CONFIG
-# ============================================================
-
-MQTT_BROKER = "203.251.85.204"
-MQTT_PORT = 1883
-
-ROBOT_ID = "robot_001"
-
-TOPIC_CMD = f"robots/{ROBOT_ID}/cmd"
-TOPIC_STATUS = f"robots/{ROBOT_ID}/status"
-TOPIC_POSE = f"robots/{ROBOT_ID}/pose"
-TOPIC_EVENT = f"robots/{ROBOT_ID}/event"
-TOPIC_HEALTH = f"robots/{ROBOT_ID}/health"
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
 
 
-# ============================================================
-# UTIL
-# ============================================================
+MQTT_BROKER = os.getenv("MQTT_BROKER", "203.251.85.204")
+MQTT_PORT = _env_int("MQTT_PORT", 1883)
+MQTT_USERNAME = os.getenv("MQTT_USERNAME", "")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "")
 
-def now_ts() -> float:
-    return time.time()
+DEVICE_TYPE = os.getenv("DEVICE_TYPE", "mobile")
+REGION_NAME = os.getenv("REGION_NAME", "sj")
+DEVICE_NUMBER = os.getenv("DEVICE_NUMBER", "01")
+DEVICE_PATH = f"{DEVICE_TYPE}/{REGION_NAME}/{DEVICE_NUMBER}"
+ROBOT_ID = os.getenv("ROBOT_ID", DEVICE_PATH.replace("/", "_"))
+
+TOPIC_STATUS = f"{DEVICE_PATH}/status"
+TOPIC_EVENT = f"{DEVICE_PATH}/event"
+TOPIC_HEALTH = f"{DEVICE_PATH}/health"
+TOPIC_AMR_CMD = f"{DEVICE_PATH}/amr/cmd"
+TOPIC_AMR_STATUS = f"{DEVICE_PATH}/amr/status"
+TOPIC_AMR_POSE = f"{DEVICE_PATH}/amr/pose"
+TOPIC_AMR_PATH = f"{DEVICE_PATH}/amr/path"
+TOPIC_AMR_CMD_RESULT = f"{DEVICE_PATH}/amr/cmd_result"
+TOPIC_ARM_CMD = f"{DEVICE_PATH}/arm/cmd"
+TOPIC_ARM_STATUS = f"{DEVICE_PATH}/arm/status"
+TOPIC_ARM_JOINT_STATES = f"{DEVICE_PATH}/arm/joint_states"
+TOPIC_ARM_CMD_RESULT = f"{DEVICE_PATH}/arm/cmd_result"
+TOPIC_MISSION_CMD = f"{DEVICE_PATH}/mission/cmd"
+TOPIC_MISSION_STATUS = f"{DEVICE_PATH}/mission/status"
+TOPIC_MISSION_CMD_RESULT = f"{DEVICE_PATH}/mission/cmd_result"
+TOPIC_SYSTEM_CMD = f"{DEVICE_PATH}/system/cmd"
+TOPIC_SYSTEM_CMD_RESULT = f"{DEVICE_PATH}/system/cmd_result"
 
 
-def yaw_to_quaternion(yaw: float):
-    qz = math.sin(yaw / 2.0)
-    qw = math.cos(yaw / 2.0)
-    return qz, qw
+def _yaw_to_quaternion(yaw: float):
+    return 0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0)
 
 
-def quaternion_to_yaw(q):
-    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-    return math.atan2(siny_cosp, cosy_cosp)
+def _quaternion_to_yaw(q) -> float:
+    return math.atan2(
+        2.0 * (q.w * q.z + q.x * q.y),
+        1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+    )
 
-
-# ============================================================
-# ROBOT AGENT NODE
-# ============================================================
 
 class RobotAgent(Node):
+    """Translate the central server's MQTT protocol to local ROS interfaces."""
+
     def __init__(self):
         super().__init__("robot_agent")
 
-        # ====================================================
-        # ROS2 ACTION CLIENTS
-        # ====================================================
+        self.declare_parameter("map_frame", "map")
+        self.declare_parameter("initial_pose_topic", "/initialpose")
+        self.declare_parameter("pose_topic", "/amcl_pose")
+        self.declare_parameter("plan_topic", "/plan")
+        self.declare_parameter("web_cmd_vel_topic", "/cmd_vel_teleop")
+        self.declare_parameter("rail_command_topic", "/rail_command")
+        self.declare_parameter("arm_command_topic", "/arm_command")
+        self.declare_parameter("capture_service", "/capture_image")
+        self.declare_parameter("status_period_sec", 1.0)
+        self.declare_parameter("jog_max_linear", 0.4)
+        self.declare_parameter("jog_max_angular", 1.2)
 
-        self.nav_client = ActionClient(
-            self,
-            NavigateToPose,
-            "navigate_to_pose"
-        )
-
-        self.rail_client = ActionClient(
-            self,
-            RailApproach,
-            "rail_approach"
-        )
-
-        # ====================================================
-        # ROS2 SERVICE CLIENTS
-        # ====================================================
-        # capture_node 쪽에서 /capture_image Trigger service를 열어두는 구조
-        # 지금 당장 capture_node가 없으면 capture step은 실패 처리됨
-
-        self.capture_client = self.create_client(
-            Trigger,
-            "/capture_image"
-        )
-
-        # ====================================================
-        # ROS2 PUBLISHERS
-        # ====================================================
+        self.map_frame = str(self.get_parameter("map_frame").value)
+        self.command_queue: queue.Queue = queue.Queue(maxsize=100)
+        self.state_lock = threading.Lock()
+        self.pose: Optional[Dict[str, float]] = None
+        self.path = []
+        self.battery: Optional[Dict[str, Any]] = None
+        self.joints: Dict[str, float] = {}
+        self.mode = "IDLE"
+        self.task_state = "READY"
+        self.error: Optional[str] = None
+        self.emergency = False
+        self.mqtt_connected = False
+        self.last_command_id: Optional[str] = None
+        self.selected_rails = []
+        self.mission_state = "IDLE"
+        self.arm_state = "IDLE"
+        self.nav_goal_handle = None
+        self.rail_goal_handle = None
+        self.nav_command_id = None
+        self.rail_command_id = None
+        self.jog_deadline: Optional[float] = None
+        self.mission_trigger_timer = None
 
         self.initial_pose_pub = self.create_publisher(
             PoseWithCovarianceStamped,
-            "/initialpose",
-            10,
-        )
-
-        # twist_mux를 쓴다면 /cmd_vel_web 입력으로 연결 추천
+            str(self.get_parameter("initial_pose_topic").value), 10)
         self.cmd_vel_pub = self.create_publisher(
-            Twist,
-            # "/cmd_vel_web",
-            "/cmd_vel",
-            10,
-        )
+            Twist, str(self.get_parameter("web_cmd_vel_topic").value), 10)
+        self.rail_command_pub = self.create_publisher(
+            String, str(self.get_parameter("rail_command_topic").value), 10)
+        self.arm_command_pub = self.create_publisher(
+            String, str(self.get_parameter("arm_command_topic").value), 10)
+        self.selected_rails_pub = self.create_publisher(String, "/selected_rails", 10)
+        self.mission_trigger_pub = self.create_publisher(Bool, "/mission_trigger", 10)
+        self.mission_halt_pub = self.create_publisher(Bool, "/mission_halt", 10)
+        self.return_home_pub = self.create_publisher(Bool, "/return_home", 10)
+        self.emergency_pub = self.create_publisher(Bool, "/emergency_stop", 10)
 
-        # 레일 이탈 명령 publisher
-        # rail 제어 노드가 이 토픽을 subscribe해서 "EXIT" 등을 처리하는 구조
-        self.rail_cmd_pub = self.create_publisher(
-            String,
-            "/rail_command",
-            10,
-        )
-
-        # BehaviorTree mission input publishers
-        self.selected_rails_pub = self.create_publisher(
-            String,
-            "/selected_rails",
-            10,
-        )
-
-        self.mission_trigger_pub = self.create_publisher(
-            Bool,
-            "/mission_trigger",
-            10,
-        )
-
-        self.return_home_pub = self.create_publisher(
-            Bool,
-            "/return_home",
-            10,
-        )
-
-        # ====================================================
-        # ROS2 SUBSCRIBERS
-        # ====================================================
-
-        self.amcl_sub = self.create_subscription(
+        self.create_subscription(
             PoseWithCovarianceStamped,
-            "/amcl_pose",
-            self.amcl_pose_callback,
-            10,
-        )
+            str(self.get_parameter("pose_topic").value), self._pose_cb, 10)
+        self.create_subscription(
+            Path, str(self.get_parameter("plan_topic").value), self._path_cb, 10)
+        self.create_subscription(BatteryState, "/battery_state", self._battery_cb, 10)
+        self.create_subscription(JointState, "/joint_states", self._joints_cb, 10)
 
-        # ====================================================
-        # MODE / STATE
-        # ====================================================
+        self.nav_client = ActionClient(self, NavigateToPose, "/navigate_to_pose")
+        self.rail_client = ActionClient(self, RailApproach, "/rail_approach")
+        self.capture_client = self.create_client(
+            Trigger, str(self.get_parameter("capture_service").value))
 
-        self.mode = "IDLE"
-        # IDLE / MANUAL / AUTO / EMERGENCY_STOP / ERROR
-
-        self.task_state = "READY"
-        # READY / NAVIGATING / RAIL_APPROACH / CAPTURING / JOGGING / STOPPED / ERROR
-
-        self.last_event = None
-        self.last_error = None
-
-        # ====================================================
-        # RUNTIME STATE
-        # ====================================================
-
-        self.current_pose = None
-        self.distance_remaining: Optional[float] = None
-
-        self.nav_goal_handle = None
-        self.rail_goal_handle = None
-
-        self.nav_command_id: Optional[str] = None
-        self.rail_command_id: Optional[str] = None
-        self.capture_command_id: Optional[str] = None
-        self.current_command_id: Optional[str] = None
-
-        self.nav_active = False
-        self.rail_active = False
-        self.capture_active = False
-
-        self.nav_result_data = None
-        self.rail_result_data = None
-        self.capture_result_data = None
-
-        self.rail_feedback = {
-            "state": None,
-            "x_error": None,
-            "angle_error": None,
-            "distance": None,
-        }
-
-        # ====================================================
-        # MANUAL JOG SAFETY
-        # ====================================================
-
-        self.last_jog_vx = 0.0
-        self.last_jog_wz = 0.0
-        self.last_jog_time = 0.0
-        self.jog_timeout_sec = 0.5
-
-        # 안전 속도 제한
-        self.max_jog_vx = 0.25
-        self.max_jog_wz = 0.35
-
-        # ====================================================
-        # ROUTINE STATE
-        # ====================================================
-
-        self.active_routine: Optional[List[Dict[str, Any]]] = None
-        self.routine_id: Optional[str] = None
-        self.routine_command_id: Optional[str] = None
-        self.routine_index = 0
-        self.routine_running = False
-        self.routine_step_active = False
-        self.routine_stop_requested = False
-        self.current_step = None
-
-        # 기본 저장 pose
-        # 웹에서 target을 문자열로 보내면 여기서 찾음
-        # 실제로는 DB나 YAML로 빼도 됨
-        self.saved_poses = {
-            "home": {
-                "x": 0.0,
-                "y": 0.0,
-                "yaw": 0.0,
-            },
-            "rail_1_start": {
-                "x": 1.0,
-                "y": 0.0,
-                "yaw": 0.0,
-            },
-            "rail_1_middle": {
-                "x": 2.0,
-                "y": 0.0,
-                "yaw": 0.0,
-            },
-            "rail_1_end": {
-                "x": 3.0,
-                "y": 0.0,
-                "yaw": 0.0,
-            },
-        }
-
-        # ====================================================
-        # MQTT
-        # ====================================================
-
-        self.cmd_queue = queue.Queue()
-
-        self.mqtt_connected = False
-
-        self.mqtt_client = mqtt.Client(
-            client_id=f"{ROBOT_ID}_agent"
-        )
-
-        self.mqtt_client.on_connect = self.on_mqtt_connect
-        self.mqtt_client.on_disconnect = self.on_mqtt_disconnect
-        self.mqtt_client.on_message = self.on_mqtt_message
-
-        self.mqtt_client.reconnect_delay_set(
-            min_delay=1,
-            max_delay=10
-        )
-
-        # 로봇이 죽거나 네트워크가 끊기면 broker가 자동으로 발행
-        self.mqtt_client.will_set(
-            TOPIC_EVENT,
-            json.dumps({
-                "robot_id": ROBOT_ID,
-                "event": "ROBOT_AGENT_DISCONNECTED",
-                "mode": "UNKNOWN",
-                "task_state": "UNKNOWN",
-                "stamp": now_ts(),
-            }),
-            qos=1,
-            retain=False,
-        )
-
-        # ====================================================
-        # TIMERS
-        # ====================================================
-
-        self.command_timer = self.create_timer(
-            0.05,
-            self.process_command_queue
-        )
-
-        self.safety_timer = self.create_timer(
-            0.1,
-            self.safety_tick
-        )
-
-        self.routine_timer = self.create_timer(
-            0.1,
-            self.routine_tick
-        )
-
-        self.status_timer = self.create_timer(
-            0.5,
-            self.publish_status
-        )
-
-        self.health_timer = self.create_timer(
-            2.0,
-            self.publish_health
-        )
-
-        self.get_logger().info("robot_agent started")
-
-    # ========================================================
-    # MQTT
-    # ========================================================
-
-    def start_mqtt(self):
         try:
-            self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-            self.mqtt_client.loop_start()
-            self.get_logger().info("[MQTT] loop started")
-        except Exception as e:
-            self.get_logger().error(f"[MQTT] connect error: {e}")
-            self.last_error = str(e)
+            self.mqtt = mqtt.Client(
+                client_id=f"robot-agent-{ROBOT_ID}",
+                protocol=mqtt.MQTTv311,
+            )
+        except TypeError:
+            self.mqtt = mqtt.Client(client_id=f"robot-agent-{ROBOT_ID}")
+        if MQTT_USERNAME:
+            self.mqtt.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self.mqtt.on_connect = self._mqtt_connect_cb
+        self.mqtt.on_disconnect = self._mqtt_disconnect_cb
+        self.mqtt.on_message = self._mqtt_message_cb
+        self.mqtt.reconnect_delay_set(min_delay=1, max_delay=30)
 
-    def on_mqtt_connect(self, client, userdata, flags, rc):
-        self.mqtt_connected = True
-        self.get_logger().info(f"[MQTT] connected rc={rc}")
+        self.create_timer(0.05, self._process_commands)
+        self.create_timer(0.05, self._safety_tick)
+        self.create_timer(
+            float(self.get_parameter("status_period_sec").value),
+            self._publish_periodic)
+        self._start_mqtt()
+        self.get_logger().info(
+            f"Robot agent ready: mqtt://{MQTT_BROKER}:{MQTT_PORT}/{DEVICE_PATH}")
 
-        client.subscribe(TOPIC_CMD, qos=1)
-        self.get_logger().info(f"[MQTT] subscribed: {TOPIC_CMD}")
+    # MQTT callbacks -----------------------------------------------------
+    def _start_mqtt(self):
+        try:
+            self.mqtt.connect_async(MQTT_BROKER, MQTT_PORT, keepalive=30)
+            self.mqtt.loop_start()
+        except Exception as exc:
+            self.get_logger().error(f"MQTT start failed: {exc}")
 
-        self.publish_event("ROBOT_AGENT_CONNECTED")
+    def _mqtt_connect_cb(self, client, userdata, flags, rc, properties=None):
+        self.mqtt_connected = (int(rc) == 0)
+        if not self.mqtt_connected:
+            self.get_logger().error(f"MQTT connection rejected: rc={rc}")
+            return
+        for topic in (TOPIC_AMR_CMD, TOPIC_ARM_CMD, TOPIC_MISSION_CMD,
+                      TOPIC_SYSTEM_CMD):
+            client.subscribe(topic, qos=1)
+        self.get_logger().info("MQTT connected and command topics subscribed")
+        self._publish_event("ROBOT_AGENT_CONNECTED")
 
-    def on_mqtt_disconnect(self, client, userdata, rc):
+    def _mqtt_disconnect_cb(self, client, userdata, rc, properties=None):
         self.mqtt_connected = False
-        self.get_logger().warn(f"[MQTT] disconnected rc={rc}")
+        self.get_logger().warning(f"MQTT disconnected: rc={rc}")
 
-    def on_mqtt_message(self, client, userdata, msg):
-        # 중요:
-        # MQTT callback thread에서 ROS action/publisher를 직접 만지지 말고 queue에 넣는다.
+    def _mqtt_message_cb(self, client, userdata, msg):
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
-        except Exception as e:
-            self.get_logger().error(f"[MQTT] bad json: {e}")
-            return
+            if not isinstance(payload, dict):
+                raise ValueError("payload must be a JSON object")
+            self.command_queue.put_nowait((msg.topic, payload))
+        except queue.Full:
+            self.get_logger().error("Command queue full; MQTT command dropped")
+        except Exception as exc:
+            self.get_logger().warning(f"Invalid MQTT command on {msg.topic}: {exc}")
 
-        self.get_logger().info(f"[MQTT] cmd queued: {payload}")
-        self.cmd_queue.put(payload)
-
-    def mqtt_publish_json(self, topic: str, payload: dict, qos: int = 0):
+    def _mqtt_publish(self, topic: str, payload: Dict[str, Any], retain=False):
         try:
-            self.mqtt_client.publish(
-                topic,
-                json.dumps(payload, ensure_ascii=False),
-                qos=qos,
-            )
-        except Exception as e:
-            self.get_logger().error(f"[MQTT] publish error: {e}")
-            self.last_error = str(e)
+            self.mqtt.publish(
+                topic, json.dumps(payload, ensure_ascii=False, allow_nan=False),
+                qos=1, retain=retain)
+        except Exception as exc:
+            self.get_logger().warning(f"MQTT publish failed ({topic}): {exc}")
 
-    # ========================================================
-    # ROS CALLBACKS
-    # ========================================================
+    # ROS telemetry ------------------------------------------------------
+    def _pose_cb(self, msg):
+        p, q = msg.pose.pose.position, msg.pose.pose.orientation
+        with self.state_lock:
+            self.pose = {"x": p.x, "y": p.y, "yaw": _quaternion_to_yaw(q),
+                         "frame_id": msg.header.frame_id or self.map_frame}
 
-    def amcl_pose_callback(self, msg: PoseWithCovarianceStamped):
-        p = msg.pose.pose.position
-        q = msg.pose.pose.orientation
+    def _path_cb(self, msg):
+        points = []
+        # Bound MQTT packet size while retaining the route shape.
+        stride = max(1, len(msg.poses) // 200)
+        for stamped in msg.poses[::stride]:
+            p = stamped.pose.position
+            points.append({"x": p.x, "y": p.y})
+        with self.state_lock:
+            self.path = points
 
-        self.current_pose = {
-            "x": float(p.x),
-            "y": float(p.y),
-            "yaw": float(quaternion_to_yaw(q)),
+    def _battery_cb(self, msg):
+        pct = float(msg.percentage)
+        if math.isfinite(pct) and pct <= 1.0:
+            pct *= 100.0
+        self.battery = {
+            "percentage": pct if math.isfinite(pct) else None,
+            "voltage": msg.voltage if math.isfinite(msg.voltage) else None,
+            "power_supply_status": int(msg.power_supply_status),
         }
 
-        self.mqtt_publish_json(TOPIC_POSE, {
-            "robot_id": ROBOT_ID,
-            "pose": self.current_pose,
-            "stamp": now_ts(),
-        })
+    def _joints_cb(self, msg):
+        self.joints = {
+            name: float(value) for name, value in zip(msg.name, msg.position)
+            if math.isfinite(value)
+        }
 
-    # ========================================================
-    # COMMAND QUEUE
-    # ========================================================
-
-    def process_command_queue(self):
-        # 한 번에 너무 많이 처리하지 않도록 최대 5개만 처리
-        max_process = 5
-
-        for _ in range(max_process):
-            if self.cmd_queue.empty():
-                return
-
+    # Command routing ----------------------------------------------------
+    def _process_commands(self):
+        for _ in range(10):
             try:
-                payload = self.cmd_queue.get_nowait()
+                topic, payload = self.command_queue.get_nowait()
             except queue.Empty:
                 return
+            self._handle_command(topic, payload)
 
-            self.handle_command(payload)
+    def _handle_command(self, topic: str, payload: Dict[str, Any]):
+        command_id = str(payload.get("command_id") or "")
+        command = str(payload.get("command") or "").upper()
+        params = payload.get("params") or {}
+        result_topic = self._result_topic(topic)
+        self.last_command_id = command_id
 
-    def handle_command(self, payload: dict):
-        cmd_type = payload.get("type")
-        command_id = payload.get("command_id")
-        self.current_command_id = command_id
-
-        self.get_logger().info(f"[CMD] handling: {payload}")
-
-        # emergency 상태에서는 clear_emergency만 허용
-        if self.mode == "EMERGENCY_STOP":
-            if cmd_type != "clear_emergency":
-                self.publish_event("COMMAND_BLOCKED_BY_EMERGENCY", {
-                    "command_id": command_id,
-                    "cmd_type": cmd_type,
-                })
-                return
-
-        try:
-            if cmd_type == "initial_pose":
-                target = payload.get("target", {})
-                self.handle_initial_pose(
-                    target.get("x", 0.0),
-                    target.get("y", 0.0),
-                    target.get("yaw", 0.0),
-                    command_id,
-                )
-
-            elif cmd_type == "navigate_to":
-                target = payload.get("target", {})
-                target_pose = self.resolve_target_pose(target)
-
-                if target_pose is None:
-                    self.publish_event("UNKNOWN_TARGET", {
-                        "command_id": command_id,
-                        "target": target,
-                    })
+        if not command_id or not command or not isinstance(params, dict):
+            self._result(result_topic, command_id, command, "REJECTED",
+                         "command_id, command and object params are required")
+            return
+        timestamp = payload.get("timestamp")
+        ttl_ms = payload.get("ttl_ms")
+        if ttl_ms is not None and timestamp is not None:
+            try:
+                if time.time() > float(timestamp) + float(ttl_ms) / 1000.0:
+                    self._result(result_topic, command_id, command, "EXPIRED",
+                                 "command TTL expired")
                     return
-
-                self.handle_navigate_to(
-                    target_pose["x"],
-                    target_pose["y"],
-                    target_pose["yaw"],
-                    command_id,
-                    source="single",
-                )
-
-            elif cmd_type == "rail_approach":
-                self.handle_rail_approach(
-                    timeout_sec=payload.get("timeout_sec", 30.0),
-                    x_tolerance=payload.get("x_tolerance", 0.25),
-                    angle_tolerance=payload.get("angle_tolerance", 5.0),
-                    allow_reverse_align=payload.get("allow_reverse_align", True),
-                    command_id=command_id,
-                    source="single",
-                )
-            
-            # elif cmd_type == "rail_exit":
-            #     self.handle_rail_exit(
-            #         command_id=command_id,
-            #         source="single",
-            #     )
-            elif cmd_type == "rail_motor":
-                cmd_type = payload.get("action")
-                self.handle_rail_motor(
-                    cmd_type = cmd_type,
-                    command_id=command_id,
-                    source="single",
-                )
-
-            elif cmd_type == "capture":
-                label = payload.get("label", "manual_capture")
-                self.handle_capture(
-                    label=label,
-                    command_id=command_id,
-                    source="single",
-                )
-
-            elif cmd_type == "jog":
-                vx = payload.get("vx", 0.0)
-                wz = payload.get("wz", 0.0)
-                self.handle_jog(vx, wz, command_id)
-
-            elif cmd_type == "jog_stop":
-                self.handle_jog_stop(command_id)
-
-            elif cmd_type == "stop":
-                self.handle_stop(command_id)
-
-            elif cmd_type == "emergency_stop":
-                self.handle_emergency_stop(command_id)
-
-            elif cmd_type == "clear_emergency":
-                self.handle_clear_emergency(command_id)
-
-            elif cmd_type == "selected_rails":
-                self.handle_selected_rails(payload, command_id)
-
-            elif cmd_type == "mission_start":
-                self.handle_mission_start(payload, command_id)
-
-            elif cmd_type == "return_home":
-                self.handle_return_home(command_id)
-
-            elif cmd_type == "start_routine":
-                self.handle_start_routine(payload, command_id)
-
-            elif cmd_type == "stop_routine":
-                self.handle_stop_routine(command_id)
-
-            elif cmd_type == "save_pose":
-                self.handle_save_pose(payload, command_id)
-
-            else:
-                self.publish_event("UNKNOWN_COMMAND", {
-                    "command_id": command_id,
-                    "cmd_type": cmd_type,
-                })
-
-        except Exception as e:
-            self.get_logger().error(f"[CMD] handling error: {e}")
-            self.mode = "ERROR"
-            self.task_state = "ERROR"
-            self.last_error = str(e)
-            self.publish_event("COMMAND_ERROR", {
-                "command_id": command_id,
-                "error": str(e),
-            })
-
-    # ========================================================
-    # TARGET POSE
-    # ========================================================
-
-    def resolve_target_pose(self, target):
-        # target이 문자열이면 saved_poses에서 찾는다.
-        if isinstance(target, str):
-            return self.saved_poses.get(target)
-
-        # target이 dict면 x, y, yaw를 직접 사용한다.
-        if isinstance(target, dict):
-            if "name" in target:
-                return self.saved_poses.get(target["name"])
-
-            return {
-                "x": float(target.get("x", 0.0)),
-                "y": float(target.get("y", 0.0)),
-                "yaw": float(target.get("yaw", 0.0)),
-            }
-
-        return None
-
-    def handle_save_pose(self, payload: dict, command_id=None):
-        name = payload.get("name")
-
-        if not name:
-            self.publish_event("SAVE_POSE_FAILED", {
-                "command_id": command_id,
-                "reason": "name is required",
-            })
-            return
-
-        target = payload.get("target")
-
-        if target:
-            pose = self.resolve_target_pose(target)
-        else:
-            pose = self.current_pose
-
-        if pose is None:
-            self.publish_event("SAVE_POSE_FAILED", {
-                "command_id": command_id,
-                "reason": "no pose available",
-            })
-            return
-
-        self.saved_poses[name] = {
-            "x": float(pose["x"]),
-            "y": float(pose["y"]),
-            "yaw": float(pose["yaw"]),
-        }
-
-        self.publish_event("POSE_SAVED", {
-            "command_id": command_id,
-            "name": name,
-            "pose": self.saved_poses[name],
-        })
-
-    # ========================================================
-    # BASIC COMMANDS
-    # ========================================================
-
-    def get_selected_rails_data(self, payload: dict) -> Optional[str]:
-        data = payload.get("data")
-        if isinstance(data, str) and data.strip():
-            return data.strip()
-
-        selected_rails = payload.get("selected_rails")
-        if isinstance(selected_rails, list):
-            rail_values = [
-                str(rail_id).strip()
-                for rail_id in selected_rails
-                if str(rail_id).strip()
-            ]
-            if rail_values:
-                return ",".join(rail_values)
-
-        # mission_start의 commands 배열만 전달되는 경우도 지원
-        commands = payload.get("commands")
-        if isinstance(commands, list):
-            for command in commands:
-                if not isinstance(command, dict):
-                    continue
-                if command.get("ros_topic") != "/selected_rails":
-                    continue
-                command_data = command.get("data")
-                if isinstance(command_data, str) and command_data.strip():
-                    return command_data.strip()
-
-        return None
-
-    def publish_selected_rails(self, selected_rails: str):
-        msg = String()
-        msg.data = selected_rails
-        self.selected_rails_pub.publish(msg)
-        self.get_logger().info(
-            f"[MISSION] selected rails published: {selected_rails}"
-        )
-
-    def handle_selected_rails(self, payload: dict, command_id=None):
-        selected_rails = self.get_selected_rails_data(payload)
-        if selected_rails is None:
-            self.publish_event("SELECTED_RAILS_REJECTED", {
-                "command_id": command_id,
-                "reason": "selected rails list is empty",
-            })
-            return
-
-        self.publish_selected_rails(selected_rails)
-        self.publish_event("SELECTED_RAILS_PUBLISHED", {
-            "command_id": command_id,
-            "selected_rails": selected_rails,
-        })
-
-    def handle_mission_start(self, payload: dict, command_id=None):
-        selected_rails = self.get_selected_rails_data(payload)
-        if selected_rails is None:
-            self.publish_event("MISSION_START_REJECTED", {
-                "command_id": command_id,
-                "reason": "selected rails list is empty",
-            })
-            return
-
-        # WaitForMissionTrigger가 최신 목록을 먼저 처리할 시간을 준다.
-        self.publish_selected_rails(selected_rails)
-
-        def publish_trigger():
-            msg = Bool()
-            msg.data = True
-            self.mission_trigger_pub.publish(msg)
-            self.get_logger().info(
-                f"[MISSION] start triggered: {selected_rails}"
-            )
-            self.publish_event("MISSION_START_TRIGGERED", {
-                "command_id": command_id,
-                "selected_rails": selected_rails,
-            })
-
-        self.create_timer_once(0.2, publish_trigger)
-
-    def handle_return_home(self, command_id=None):
-        # robot_agent가 직접 실행 중인 명령과 BT 복귀 동작이 충돌하지 않도록 정리
-        self.routine_stop_requested = True
-        self.routine_running = False
-        self.routine_step_active = False
-        self.active_routine = None
-        self.current_step = None
-        self.cancel_nav_goal()
-        self.cancel_rail_goal()
-        self.publish_cmd_vel(0.0, 0.0)
-
-        msg = Bool()
-        msg.data = True
-        self.return_home_pub.publish(msg)
-        self.get_logger().warning("[MISSION] return home requested")
-        self.publish_event("RETURN_HOME_REQUESTED", {
-            "command_id": command_id,
-        })
-
-    def handle_initial_pose(self, x: float, y: float, yaw: float, command_id=None):
-        msg = PoseWithCovarianceStamped()
-        msg.header.frame_id = "map"
-        msg.header.stamp = self.get_clock().now().to_msg()
-
-        msg.pose.pose.position.x = float(x)
-        msg.pose.pose.position.y = float(y)
-        msg.pose.pose.position.z = 0.0
-
-        qz, qw = yaw_to_quaternion(float(yaw))
-        msg.pose.pose.orientation.z = qz
-        msg.pose.pose.orientation.w = qw
-
-        msg.pose.covariance[0] = 0.25
-        msg.pose.covariance[7] = 0.25
-        msg.pose.covariance[35] = 0.0685
-
-        self.initial_pose_pub.publish(msg)
-
-        self.mode = "IDLE"
-        self.task_state = "INITIAL_POSE_SET"
-
-        self.publish_event("INITIAL_POSE_SET", {
-            "command_id": command_id,
-            "x": x,
-            "y": y,
-            "yaw": yaw,
-        })
-
-    def handle_stop(self, command_id=None):
-        self.routine_stop_requested = True
-        self.routine_running = False
-        self.routine_step_active = False
-        self.active_routine = None
-        self.current_step = None
-
-        self.cancel_nav_goal()
-        self.cancel_rail_goal()
-
-        self.publish_cmd_vel(0.0, 0.0)
-
-        self.mode = "IDLE"
-        self.task_state = "STOPPED"
-
-        self.publish_event("STOPPED", {
-            "command_id": command_id,
-        })
-
-    def handle_emergency_stop(self, command_id=None):
-        self.routine_stop_requested = True
-        self.routine_running = False
-        self.routine_step_active = False
-        self.active_routine = None
-        self.current_step = None
-
-        self.cancel_nav_goal()
-        self.cancel_rail_goal()
-
-        # 여러 번 0 publish
-        for _ in range(3):
-            self.publish_cmd_vel(0.0, 0.0)
-
-        self.mode = "EMERGENCY_STOP"
-        self.task_state = "EMERGENCY_STOP"
-
-        self.publish_event("EMERGENCY_STOP", {
-            "command_id": command_id,
-        })
-
-    def handle_clear_emergency(self, command_id=None):
-        self.publish_cmd_vel(0.0, 0.0)
-
-        self.mode = "IDLE"
-        self.task_state = "READY"
-        self.last_error = None
-
-        self.publish_event("EMERGENCY_CLEARED", {
-            "command_id": command_id,
-        })
-
-    # ========================================================
-    # JOG
-    # ========================================================
-
-    def handle_jog(self, vx: float, wz: float, command_id=None):
-        # 수동 조작은 기존 자동 명령을 끊는다.
-        if self.mode == "AUTO":
-            self.handle_stop_routine(command_id)
-
-        self.cancel_nav_goal()
-        self.cancel_rail_goal()
-
-        self.mode = "MANUAL"
-        self.task_state = "JOGGING"
-
-        self.last_jog_time = now_ts()
-        self.publish_cmd_vel(vx, wz)
-
-    def handle_jog_stop(self, command_id=None):
-        self.publish_cmd_vel(0.0, 0.0)
-
-        self.mode = "IDLE"
-        self.task_state = "READY"
-
-        self.publish_event("JOG_STOPPED", {
-            "command_id": command_id,
-        })
-
-    def safety_tick(self):
-        # jog 명령이 끊기면 자동 정지
-        if self.mode == "MANUAL" and self.task_state == "JOGGING":
-            elapsed = now_ts() - self.last_jog_time
-
-            if elapsed > self.jog_timeout_sec:
-                self.publish_cmd_vel(0.0, 0.0)
-                self.mode = "IDLE"
-                self.task_state = "READY"
-                self.publish_event("JOG_TIMEOUT_STOP", {
-                    "elapsed": elapsed,
-                })
-
-    # ========================================================
-    # NAV2 ACTION
-    # ========================================================
-
-    def handle_navigate_to(
-        self,
-        x: float,
-        y: float,
-        yaw: float,
-        command_id=None,
-        source="single",
-    ):
-        # rail approach 중이면 취소
-        self.cancel_rail_goal()
-
-        # jog 중일 수 있으니 먼저 정지
-        self.publish_cmd_vel(0.0, 0.0)
-
-        if not self.nav_client.wait_for_server(timeout_sec=2.0):
-            self.task_state = "NAV_SERVER_NOT_AVAILABLE"
-            self.publish_event("NAV_SERVER_NOT_AVAILABLE", {
-                "command_id": command_id,
-                "source": source,
-            })
-            self.finish_current_step(False, "nav server not available")
-            return
-
-        goal_msg = NavigateToPose.Goal()
-        goal_msg.pose.header.frame_id = "map"
-        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
-
-        goal_msg.pose.pose.position.x = float(x)
-        goal_msg.pose.pose.position.y = float(y)
-        goal_msg.pose.pose.position.z = 0.0
-
-        qz, qw = yaw_to_quaternion(float(yaw))
-        goal_msg.pose.pose.orientation.z = qz
-        goal_msg.pose.pose.orientation.w = qw
-
-        self.nav_command_id = command_id
-        self.nav_active = True
-        self.nav_result_data = None
-
-        if source == "routine":
-            self.mode = "AUTO"
-        else:
-            self.mode = "IDLE"
-
-        self.task_state = "SENDING_NAV_GOAL"
-
-        send_future = self.nav_client.send_goal_async(
-            goal_msg,
-            feedback_callback=self.nav_feedback_callback,
-        )
-        send_future.add_done_callback(self.nav_goal_response_callback)
-
-        self.publish_event("NAV_GOAL_SENT", {
-            "command_id": command_id,
-            "source": source,
-            "x": x,
-            "y": y,
-            "yaw": yaw,
-        })
-
-    def nav_feedback_callback(self, feedback_msg):
-        feedback = feedback_msg.feedback
-        self.distance_remaining = float(feedback.distance_remaining)
-        self.task_state = "NAVIGATING"
-
-    def nav_goal_response_callback(self, future):
-        goal_handle = future.result()
-
-        if not goal_handle.accepted:
-            self.nav_goal_handle = None
-            self.nav_active = False
-            self.task_state = "NAV_GOAL_REJECTED"
-
-            self.publish_event("NAV_GOAL_REJECTED", {
-                "command_id": self.nav_command_id,
-            })
-
-            self.finish_current_step(False, "nav goal rejected")
-            return
-
-        self.nav_goal_handle = goal_handle
-        self.task_state = "NAV_GOAL_ACCEPTED"
-
-        self.publish_event("NAV_GOAL_ACCEPTED", {
-            "command_id": self.nav_command_id,
-        })
-
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self.nav_result_callback)
-
-    def nav_result_callback(self, future):
-        result = future.result()
-        status = result.status
-
-        success = status == GoalStatus.STATUS_SUCCEEDED
-
-        if success:
-            event = "NAV_GOAL_SUCCEEDED"
-            reason = "succeeded"
-        else:
-            event = "NAV_GOAL_FINISHED"
-            reason = f"status={status}"
-
-        self.nav_goal_handle = None
-        self.nav_active = False
-        self.distance_remaining = None
-
-        self.publish_cmd_vel(0.0, 0.0)
-
-        self.nav_result_data = {
-            "success": success,
-            "status": status,
-            "reason": reason,
-        }
-
-        self.publish_event(event, {
-            "command_id": self.nav_command_id,
-            "status": status,
-            "success": success,
-        })
-
-        self.finish_current_step(success, reason)
-
-        if not self.routine_running and self.mode != "EMERGENCY_STOP":
-            self.mode = "IDLE"
-            self.task_state = "READY" if success else "ERROR"
-
-    def cancel_nav_goal(self):
-        if self.nav_goal_handle is not None:
-            try:
-                self.nav_goal_handle.cancel_goal_async()
-            except Exception as e:
-                self.get_logger().warn(f"[NAV] cancel error: {e}")
-
-            self.nav_goal_handle = None
-
-        self.nav_active = False
-        self.distance_remaining = None
-
-    # ========================================================
-    # RAIL APPROACH ACTION
-    # ========================================================
-
-    def handle_rail_approach(
-        self,
-        timeout_sec: float = 60.0,
-        x_tolerance: float = 0.08,
-        angle_tolerance: float = 1.0,
-        allow_reverse_align: bool = True,
-        command_id=None,
-        source="single",
-    ):
-        # Nav2 goal이 살아있으면 취소
-        self.cancel_nav_goal()
-
-        # jog 중일 수 있으니 정지
-        self.publish_cmd_vel(0.0, 0.0)
-
-        if not self.rail_client.wait_for_server(timeout_sec=2.0):
-            self.task_state = "RAIL_SERVER_NOT_AVAILABLE"
-            self.publish_event("RAIL_SERVER_NOT_AVAILABLE", {
-                "command_id": command_id,
-                "source": source,
-            })
-            self.finish_current_step(False, "rail server not available")
-            return
-
-        goal_msg = RailApproach.Goal()
-        goal_msg.timeout_sec = float(timeout_sec)
-        goal_msg.x_tolerance = float(x_tolerance)
-        goal_msg.angle_tolerance = float(angle_tolerance)
-        goal_msg.allow_reverse_align = bool(allow_reverse_align)
-
-        self.rail_command_id = command_id
-        self.rail_active = True
-        self.rail_result_data = None
-
-        self.rail_feedback = {
-            "state": None,
-            "x_error": None,
-            "angle_error": None,
-            "distance": None,
-        }
-
-        if source == "routine":
-            self.mode = "AUTO"
-        else:
-            self.mode = "IDLE"
-
-        self.task_state = "RAIL_SENDING_GOAL"
-
-        send_future = self.rail_client.send_goal_async(
-            goal_msg,
-            feedback_callback=self.rail_feedback_callback,
-        )
-        send_future.add_done_callback(self.rail_goal_response_callback)
-
-        self.publish_event("RAIL_GOAL_SENT", {
-            "command_id": command_id,
-            "source": source,
-            "timeout_sec": goal_msg.timeout_sec,
-            "x_tolerance": goal_msg.x_tolerance,
-            "angle_tolerance": goal_msg.angle_tolerance,
-            "allow_reverse_align": goal_msg.allow_reverse_align,
-        })
-
-    def rail_feedback_callback(self, feedback_msg):
-        feedback = feedback_msg.feedback
-
-        self.rail_feedback = {
-            "state": feedback.state,
-            "x_error": float(feedback.x_error),
-            "angle_error": float(feedback.angle_error),
-            "distance": feedback.distance,
-        }
-
-        self.task_state = f"RAIL_{feedback.state}"
-
-        # feedback을 너무 자주 MQTT로 쏘면 부담될 수 있음.
-        # 필요하면 0.5초 throttle 추가 가능.
-        self.publish_event("RAIL_FEEDBACK", {
-            "command_id": self.rail_command_id,
-            "rail_state": feedback.state,
-            "x_error": float(feedback.x_error),
-            "angle_error": float(feedback.angle_error),
-            "distance": feedback.distance,
-        }, qos=0)
-
-    def rail_goal_response_callback(self, future):
-        goal_handle = future.result()
-
-        if not goal_handle.accepted:
-            self.rail_goal_handle = None
-            self.rail_active = False
-            self.task_state = "RAIL_GOAL_REJECTED"
-
-            self.publish_event("RAIL_GOAL_REJECTED", {
-                "command_id": self.rail_command_id,
-            })
-
-            self.finish_current_step(False, "rail goal rejected")
-            return
-
-        self.rail_goal_handle = goal_handle
-        self.task_state = "RAIL_GOAL_ACCEPTED"
-
-        self.publish_event("RAIL_GOAL_ACCEPTED", {
-            "command_id": self.rail_command_id,
-        })
-
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self.rail_result_callback)
-
-    def rail_result_callback(self, future):
-        result = future.result()
-        status = result.status
-        rail_result = result.result
-
-        success = status == GoalStatus.STATUS_SUCCEEDED and bool(rail_result.success)
-
-        if success:
-            event = "RAIL_SUCCEEDED"
-            reason = rail_result.reason
-        else:
-            event = "RAIL_FINISHED"
-            reason = rail_result.reason
-
-        self.rail_goal_handle = None
-        self.rail_active = False
-
-        self.publish_cmd_vel(0.0, 0.0)
-
-        self.rail_result_data = {
-            "success": success,
-            "status": status,
-            "reason": reason,
-        }
-
-        self.publish_event(event, {
-            "command_id": self.rail_command_id,
-            "status": status,
-            "success": success,
-            "reason": reason,
-        })
-
-        self.finish_current_step(success, reason)
-
-        if not self.routine_running and self.mode != "EMERGENCY_STOP":
-            self.mode = "IDLE"
-            self.task_state = "READY" if success else "ERROR"
-
-    def cancel_rail_goal(self):
-        if self.rail_goal_handle is not None:
-            try:
-                self.rail_goal_handle.cancel_goal_async()
-            except Exception as e:
-                self.get_logger().warn(f"[RAIL] cancel error: {e}")
-
-            self.rail_goal_handle = None
-
-        self.rail_active = False
-
-    # def handle_rail_exit(self, command_id=None, source="single"):
-    #     # Nav2 goal이나 rail approach가 살아있으면 먼저 정리
-    #     self.cancel_nav_goal()
-    #     self.cancel_rail_goal()
-
-    #     # 혹시 jog/nav 속도 명령이 남아있을 수 있으니 정지
-    #     self.publish_cmd_vel(0.0, 0.0)
-
-    #     msg = String()
-    #     msg.data = "EXIT"
-    #     self.rail_cmd_pub.publish(msg)
-
-    #     if source == "routine":
-    #         self.mode = "AUTO"
-    #     else:
-    #         self.mode = "IDLE"
-
-    #     self.task_state = "RAIL_EXIT_SENT"
-
-    #     self.publish_event("RAIL_EXIT_SENT", {
-    #         "command_id": command_id,
-    #         "source": source,
-    #         "cmd": "EXIT",
-    #         "topic": "/rail_command",
-    #     })
-
-    #     # 단일 명령이면 여기서 끝
-    #     # 루틴 step으로 실행된 경우 다음 step으로 넘어가게 처리
-    #     self.finish_current_step(True, "rail exit command sent")
-    def handle_rail_motor(self, cmd_type=None,command_id=None, source="single"):
-        # Nav2 goal이나 rail approach가 살아있으면 먼저 정리
-        self.cancel_nav_goal()
-        self.cancel_rail_goal()
-
-        # 혹시 jog/nav 속도 명령이 남아있을 수 있으니 정지
-        self.publish_cmd_vel(0.0, 0.0)
-
-        msg = String()
-        msg.data = cmd_type
-        self.rail_cmd_pub.publish(msg)
-
-
-
-
-    # ========================================================
-    # CAPTURE SERVICE
-    # ========================================================
-
-    def handle_capture(
-        self,
-        label: str = "capture",
-        command_id=None,
-        source="single",
-    ):
-        self.publish_cmd_vel(0.0, 0.0)
-
-        if not self.capture_client.wait_for_service(timeout_sec=1.0):
-            self.task_state = "CAPTURE_SERVER_NOT_AVAILABLE"
-            self.publish_event("CAPTURE_SERVER_NOT_AVAILABLE", {
-                "command_id": command_id,
-                "label": label,
-                "source": source,
-            })
-            self.finish_current_step(False, "capture server not available")
-            return
-
-        self.capture_command_id = command_id
-        self.capture_active = True
-        self.capture_result_data = None
-
-        if source == "routine":
-            self.mode = "AUTO"
-        else:
-            self.mode = "IDLE"
-
-        self.task_state = "CAPTURING"
-
-        req = Trigger.Request()
-
-        future = self.capture_client.call_async(req)
-        future.add_done_callback(
-            lambda f: self.capture_result_callback(f, label)
-        )
-
-        self.publish_event("CAPTURE_REQUESTED", {
-            "command_id": command_id,
-            "label": label,
-            "source": source,
-            "pose": self.current_pose,
-        })
-
-    def capture_result_callback(self, future, label: str):
-        try:
-            res = future.result()
-            success = bool(res.success)
-            message = res.message
-        except Exception as e:
-            success = False
-            message = str(e)
-
-        self.capture_active = False
-
-        self.capture_result_data = {
-            "success": success,
-            "message": message,
-            "label": label,
-            "pose": self.current_pose,
-        }
-
-        event = "IMAGE_CAPTURED" if success else "CAPTURE_FAILED"
-
-        self.publish_event(event, {
-            "command_id": self.capture_command_id,
-            "success": success,
-            "message": message,
-            "label": label,
-            "pose": self.current_pose,
-        })
-
-        self.finish_current_step(success, message)
-
-        if not self.routine_running and self.mode != "EMERGENCY_STOP":
-            self.mode = "IDLE"
-            self.task_state = "READY" if success else "ERROR"
-
-    # ========================================================
-    # ROUTINE
-    # ========================================================
-
-    def handle_start_routine(self, payload: dict, command_id=None):
-        routine = payload.get("routine")
-        routine_id = payload.get("routine_id", "manual_routine")
-
-        if not isinstance(routine, list) or len(routine) == 0:
-            self.publish_event("ROUTINE_START_FAILED", {
-                "command_id": command_id,
-                "reason": "routine must be non-empty list",
-            })
-            return
-
-        # 기존 동작 정리
-        self.cancel_nav_goal()
-        self.cancel_rail_goal()
-        self.publish_cmd_vel(0.0, 0.0)
-
-        self.active_routine = routine
-        self.routine_id = routine_id
-        self.routine_command_id = command_id
-        self.routine_index = 0
-        self.routine_running = True
-        self.routine_step_active = False
-        self.routine_stop_requested = False
-        self.current_step = None
-
-        self.mode = "AUTO"
-        self.task_state = "ROUTINE_STARTED"
-
-        self.publish_event("ROUTINE_STARTED", {
-            "command_id": command_id,
-            "routine_id": routine_id,
-            "total_steps": len(routine),
-        })
-
-    def handle_stop_routine(self, command_id=None):
-        self.routine_stop_requested = True
-        self.routine_running = False
-        self.routine_step_active = False
-        self.active_routine = None
-        self.current_step = None
-
-        self.cancel_nav_goal()
-        self.cancel_rail_goal()
-        self.publish_cmd_vel(0.0, 0.0)
-
-        self.mode = "IDLE"
-        self.task_state = "ROUTINE_STOPPED"
-
-        self.publish_event("ROUTINE_STOPPED", {
-            "command_id": command_id,
-        })
-
-    def routine_tick(self):
-        if not self.routine_running:
-            return
-
-        if self.mode == "EMERGENCY_STOP":
-            return
-
-        if self.routine_stop_requested:
-            self.handle_stop_routine(self.routine_command_id)
-            return
-
-        if self.active_routine is None:
-            return
-
-        # 현재 step이 실행 중이면 기다림
-        if self.routine_step_active:
-            return
-
-        # 모든 step 완료
-        if self.routine_index >= len(self.active_routine):
-            self.publish_cmd_vel(0.0, 0.0)
-
-            self.publish_event("ROUTINE_FINISHED", {
-                "command_id": self.routine_command_id,
-                "routine_id": self.routine_id,
-                "total_steps": len(self.active_routine),
-            })
-
-            self.mode = "IDLE"
-            self.task_state = "READY"
-
-            self.routine_running = False
-            self.active_routine = None
-            self.current_step = None
-            return
-
-        # 다음 step 실행
-        step = self.active_routine[self.routine_index]
-        self.current_step = step
-        self.routine_step_active = True
-
-        step_type = step.get("type")
-        step_command_id = f"{self.routine_command_id}_step_{self.routine_index}"
-
-        self.publish_event("ROUTINE_STEP_STARTED", {
-            "command_id": self.routine_command_id,
-            "routine_id": self.routine_id,
-            "step_index": self.routine_index,
-            "step": step,
-        })
-
-        if step_type == "navigate_to":
-            target = step.get("target")
-            target_pose = self.resolve_target_pose(target)
-
-            if target_pose is None:
-                self.finish_current_step(False, f"unknown target: {target}")
+            except (TypeError, ValueError):
+                self._result(result_topic, command_id, command, "REJECTED",
+                             "invalid timestamp or ttl_ms")
                 return
-
-            self.handle_navigate_to(
-                target_pose["x"],
-                target_pose["y"],
-                target_pose["yaw"],
-                step_command_id,
-                source="routine",
-            )
-
-        elif step_type == "rail_approach":
-            self.handle_rail_approach(
-                timeout_sec=step.get("timeout_sec", 60.0),
-                x_tolerance=step.get("x_tolerance", 0.08),
-                angle_tolerance=step.get("angle_tolerance", 1.0),
-                allow_reverse_align=step.get("allow_reverse_align", True),
-                command_id=step_command_id,
-                source="routine",
-            )
-
-        elif step_type == "capture":
-            self.handle_capture(
-                label=step.get("label", f"step_{self.routine_index}"),
-                command_id=step_command_id,
-                source="routine",
-            )
-
-        elif step_type == "wait":
-            duration = float(step.get("duration_sec", 1.0))
-            self.create_timer_once(
-                duration,
-                lambda: self.finish_current_step(True, f"waited {duration} sec")
-            )
-
-        else:
-            self.finish_current_step(False, f"unknown step type: {step_type}")
-
-    def finish_current_step(self, success: bool, reason: str):
-        # 루틴 step이 실행 중일 때만 처리
-        if not self.routine_running or not self.routine_step_active:
+        clear_emergency = (
+            topic == TOPIC_SYSTEM_CMD and command == "CLEAR_EMERGENCY"
+        )
+        if self.emergency and not clear_emergency:
+            self._result(result_topic, command_id, command, "REJECTED",
+                         "COMMAND_BLOCKED_BY_EMERGENCY")
             return
 
-        step = self.current_step or {}
-        continue_on_fail = bool(step.get("continue_on_fail", False))
-
-        self.publish_event("ROUTINE_STEP_FINISHED", {
-            "command_id": self.routine_command_id,
-            "routine_id": self.routine_id,
-            "step_index": self.routine_index,
-            "success": success,
-            "reason": reason,
-            "step": step,
-        })
-
-        self.routine_step_active = False
-
-        if success or continue_on_fail:
-            self.routine_index += 1
-            self.task_state = "ROUTINE_NEXT_STEP"
-        else:
-            self.publish_cmd_vel(0.0, 0.0)
-
-            self.publish_event("ROUTINE_FAILED", {
-                "command_id": self.routine_command_id,
-                "routine_id": self.routine_id,
-                "failed_step_index": self.routine_index,
-                "reason": reason,
-                "step": step,
-            })
-
-            self.routine_running = False
-            self.active_routine = None
-            self.current_step = None
-
-            self.mode = "ERROR"
-            self.task_state = "ROUTINE_FAILED"
-            self.last_error = reason
-
-    def create_timer_once(self, delay_sec: float, callback):
-        # rclpy에는 one-shot timer가 따로 없으므로 간단히 구현
-        timer_holder = {"timer": None}
-
-        def _wrapper():
-            timer_holder["timer"].cancel()
-            callback()
-
-        timer_holder["timer"] = self.create_timer(delay_sec, _wrapper)
-
-    # ========================================================
-    # CMD_VEL
-    # ========================================================
-
-    def publish_cmd_vel(self, vx: float, wz: float):
-        vx = max(min(float(vx), self.max_jog_vx), -self.max_jog_vx)
-        wz = max(min(float(wz), self.max_jog_wz), -self.max_jog_wz)
-
-        self.last_jog_vx = vx
-        self.last_jog_wz = wz
-
-        msg = Twist()
-        msg.linear.x = vx
-        msg.angular.z = wz
-        self.cmd_vel_pub.publish(msg)
-
-    # ========================================================
-    # STATUS / EVENT / HEALTH
-    # ========================================================
-
-    def publish_status(self):
-        payload = {
-            "robot_id": ROBOT_ID,
-            "mode": self.mode,
-            "task_state": self.task_state,
-            "pose": self.current_pose,
-            "distance_remaining": self.distance_remaining,
-            "rail_feedback": self.rail_feedback,
-            "routine": {
-                "routine_id": self.routine_id,
-                "running": self.routine_running,
-                "index": self.routine_index,
-                "total": len(self.active_routine) if self.active_routine else 0,
-                "current_step": self.current_step,
-            },
-            "last_event": self.last_event,
-            "last_error": self.last_error,
-            "mqtt_connected": self.mqtt_connected,
-            "stamp": now_ts(),
-        }
-
-        self.mqtt_publish_json(TOPIC_STATUS, payload)
-
-    def publish_health(self):
-        nav_available = self.nav_client.server_is_ready()
-        rail_available = self.rail_client.server_is_ready()
-        capture_available = self.capture_client.service_is_ready()
-
-        localization_ok = self.current_pose is not None
-
-        payload = {
-            "robot_id": ROBOT_ID,
-            "mode": self.mode,
-            "task_state": self.task_state,
-            "mqtt_connected": self.mqtt_connected,
-            "nav2_available": bool(nav_available),
-            "rail_server_available": bool(rail_available),
-            "capture_server_available": bool(capture_available),
-            "localization_ok": bool(localization_ok),
-            "pose_available": self.current_pose is not None,
-            "stamp": now_ts(),
-        }
-
-        self.mqtt_publish_json(TOPIC_HEALTH, payload)
-
-    def publish_event(self, event: str, extra: Optional[dict] = None, qos: int = 1):
-        self.last_event = event
-
-        payload = {
-            "robot_id": ROBOT_ID,
-            "event": event,
-            "mode": self.mode,
-            "task_state": self.task_state,
-            "stamp": now_ts(),
-        }
-
-        if extra:
-            payload.update(extra)
-
-        self.mqtt_publish_json(TOPIC_EVENT, payload, qos=qos)
-
-
-# ============================================================
-# MAIN
-# ============================================================
-
-def main():
-    rclpy.init()
-
-    node = RobotAgent()
-    node.start_mqtt()
-
-    try:
-        rclpy.spin(node)
-
-    except KeyboardInterrupt:
-        pass
-
-    finally:
-        node.publish_cmd_vel(0.0, 0.0)
-        node.publish_event("ROBOT_AGENT_SHUTDOWN")
-
         try:
-            node.mqtt_client.loop_stop()
-            node.mqtt_client.disconnect()
+            if topic == TOPIC_AMR_CMD:
+                self._handle_amr(command_id, command, params, ttl_ms)
+            elif topic == TOPIC_MISSION_CMD:
+                self._handle_mission(command_id, command, params)
+            elif topic == TOPIC_ARM_CMD:
+                self._handle_arm(command_id, command, params)
+            elif topic == TOPIC_SYSTEM_CMD:
+                self._handle_system(command_id, command)
+            else:
+                self._result(result_topic, command_id, command, "REJECTED",
+                             "unknown command topic")
+        except Exception as exc:
+            self.error = str(exc)
+            self.get_logger().error(f"Command {command} failed: {exc}")
+            self._result(result_topic, command_id, command, "FAILED", str(exc))
+
+    @staticmethod
+    def _result_topic(command_topic: str) -> str:
+        return {
+            TOPIC_AMR_CMD: TOPIC_AMR_CMD_RESULT,
+            TOPIC_ARM_CMD: TOPIC_ARM_CMD_RESULT,
+            TOPIC_MISSION_CMD: TOPIC_MISSION_CMD_RESULT,
+            TOPIC_SYSTEM_CMD: TOPIC_SYSTEM_CMD_RESULT,
+        }.get(command_topic, TOPIC_SYSTEM_CMD_RESULT)
+
+    def _handle_amr(self, cid, command, params, ttl_ms):
+        if command == "SET_INITIAL_POSE":
+            msg = PoseWithCovarianceStamped()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = self.map_frame
+            msg.pose.pose.position.x = float(params["x"])
+            msg.pose.pose.position.y = float(params["y"])
+            qx, qy, qz, qw = _yaw_to_quaternion(float(params.get("yaw", 0.0)))
+            msg.pose.pose.orientation.x, msg.pose.pose.orientation.y = qx, qy
+            msg.pose.pose.orientation.z, msg.pose.pose.orientation.w = qz, qw
+            msg.pose.covariance[0] = msg.pose.covariance[7] = 0.25
+            msg.pose.covariance[35] = 0.0685
+            self.initial_pose_pub.publish(msg)
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "NAVIGATE":
+            self._navigate(cid, command, params)
+        elif command in ("CANCEL_NAVIGATION", "STOP"):
+            self._cancel_navigation()
+            self._stop_motion()
+            self.mode, self.task_state = "IDLE", "STOPPED"
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "JOG":
+            self._jog(params, ttl_ms)
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "RAIL_ENTER":
+            self._rail_approach(cid, command, params)
+        elif command == "CANCEL_RAIL_APPROACH":
+            self._cancel_rail()
+            self._stop_motion()
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "RAIL_EXIT":
+            self.rail_command_pub.publish(String(data="BACK"))
+            self.mode, self.task_state = "MANUAL", "RAIL_EXIT"
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "SUCCEEDED")
+        else:
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "REJECTED",
+                         "UNKNOWN_COMMAND")
+
+    def _navigate(self, cid, command, params):
+        if not self.nav_client.server_is_ready():
+            self.nav_client.wait_for_server(timeout_sec=0.2)
+        if not self.nav_client.server_is_ready():
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "FAILED",
+                         "NAV_SERVER_NOT_AVAILABLE")
+            return
+        goal = NavigateToPose.Goal()
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.header.frame_id = self.map_frame
+        goal.pose.pose.position.x = float(params["x"])
+        goal.pose.pose.position.y = float(params["y"])
+        qx, qy, qz, qw = _yaw_to_quaternion(float(params.get("yaw", 0.0)))
+        goal.pose.pose.orientation.x, goal.pose.pose.orientation.y = qx, qy
+        goal.pose.pose.orientation.z, goal.pose.pose.orientation.w = qz, qw
+        self.mode, self.task_state = "AUTO", "SENDING_NAV_GOAL"
+        self.nav_command_id = cid
+        future = self.nav_client.send_goal_async(goal, self._nav_feedback)
+        future.add_done_callback(self._nav_goal_response)
+        self._result(TOPIC_AMR_CMD_RESULT, cid, command, "ACCEPTED")
+
+    def _nav_feedback(self, feedback_msg):
+        feedback = feedback_msg.feedback
+        self.task_state = "NAVIGATING"
+        distance = getattr(feedback, "distance_remaining", None)
+        if distance is not None:
+            self._mqtt_publish(TOPIC_AMR_STATUS, self._amr_status(distance))
+
+    def _nav_goal_response(self, future):
+        try:
+            handle = future.result()
+            if not handle.accepted:
+                self._result(TOPIC_AMR_CMD_RESULT, self.nav_command_id,
+                             "NAVIGATE", "FAILED", "NAV_GOAL_REJECTED")
+                self.mode, self.task_state = "IDLE", "READY"
+                return
+            self.nav_goal_handle = handle
+            handle.get_result_async().add_done_callback(self._nav_result)
+        except Exception as exc:
+            self._result(TOPIC_AMR_CMD_RESULT, self.nav_command_id,
+                         "NAVIGATE", "FAILED", str(exc))
+
+    def _nav_result(self, future):
+        wrapped = future.result()
+        success = wrapped.status == GoalStatus.STATUS_SUCCEEDED
+        self.mode = "IDLE"
+        self.task_state = "READY" if success else "ERROR"
+        self.nav_goal_handle = None
+        self._result(TOPIC_AMR_CMD_RESULT, self.nav_command_id, "NAVIGATE",
+                     "SUCCEEDED" if success else "FAILED",
+                     "" if success else f"nav status={wrapped.status}")
+
+    def _rail_approach(self, cid, command, params):
+        if not self.rail_client.server_is_ready():
+            self.rail_client.wait_for_server(timeout_sec=0.2)
+        if not self.rail_client.server_is_ready():
+            self._result(TOPIC_AMR_CMD_RESULT, cid, command, "FAILED",
+                         "RAIL_SERVER_NOT_AVAILABLE")
+            return
+        goal = RailApproach.Goal()
+        goal.timeout_sec = float(params.get("timeout_sec", 60.0))
+        goal.x_tolerance = float(params.get("x_tolerance", 0.08))
+        goal.angle_tolerance = float(params.get("angle_tolerance", 1.0))
+        goal.allow_reverse_align = bool(params.get("allow_reverse_align", True))
+        self.mode, self.task_state = "AUTO", "RAIL_APPROACH"
+        self.rail_command_id = cid
+        future = self.rail_client.send_goal_async(goal, self._rail_feedback)
+        future.add_done_callback(self._rail_goal_response)
+        self._result(TOPIC_AMR_CMD_RESULT, cid, command, "ACCEPTED")
+
+    def _rail_feedback(self, feedback_msg):
+        feedback = feedback_msg.feedback
+        self.task_state = f"RAIL_{getattr(feedback, 'state', 'RUNNING')}"
+
+    def _rail_goal_response(self, future):
+        try:
+            handle = future.result()
+            if not handle.accepted:
+                self._result(TOPIC_AMR_CMD_RESULT, self.rail_command_id,
+                             "RAIL_ENTER", "FAILED", "RAIL_GOAL_REJECTED")
+                self.mode, self.task_state = "IDLE", "READY"
+                return
+            self.rail_goal_handle = handle
+            handle.get_result_async().add_done_callback(self._rail_result)
+        except Exception as exc:
+            self._result(TOPIC_AMR_CMD_RESULT, self.rail_command_id,
+                         "RAIL_ENTER", "FAILED", str(exc))
+
+    def _rail_result(self, future):
+        wrapped = future.result()
+        result = wrapped.result
+        action_succeeded = wrapped.status == GoalStatus.STATUS_SUCCEEDED
+        result_succeeded = bool(getattr(result, "success", True))
+        success = action_succeeded and result_succeeded
+        reason = str(getattr(result, "reason", ""))
+        self.mode, self.task_state = ("IDLE", "READY" if success else "ERROR")
+        self.rail_goal_handle = None
+        self._result(TOPIC_AMR_CMD_RESULT, self.rail_command_id, "RAIL_ENTER",
+                     "SUCCEEDED" if success else "FAILED", reason)
+
+    def _jog(self, params, ttl_ms):
+        if str(params.get("mode", "NORMAL_JOG")).upper() == "RAIL_JOG":
+            direction = str(params.get("direction", "STOP")).upper()
+            value = {"FORWARD": "FORWARD", "BACKWARD": "BACK",
+                     "BACK": "BACK", "STOP": "STOP"}.get(direction)
+            if value is None:
+                raise ValueError(f"invalid rail direction: {direction}")
+            self.rail_command_pub.publish(String(data=value))
+        else:
+            max_v = float(self.get_parameter("jog_max_linear").value)
+            max_w = float(self.get_parameter("jog_max_angular").value)
+            vx = max(-max_v, min(max_v, float(params.get("vx", 0.0))))
+            wz = max(-max_w, min(max_w, float(params.get("wz", 0.0))))
+            twist = Twist()
+            twist.linear.x = vx
+            twist.angular.z = wz
+            self.cmd_vel_pub.publish(twist)
+        duration = max(0.05, min(float(ttl_ms or 500) / 1000.0, 2.0))
+        self.jog_deadline = time.monotonic() + duration
+        self.mode, self.task_state = "MANUAL", "JOGGING"
+
+    def _handle_mission(self, cid, command, params):
+        if command in ("SELECT_RAILS", "START"):
+            rails = self._normalise_rails(params.get("rails", []))
+            if not rails:
+                self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "REJECTED",
+                             "selected rails list is empty")
+                return
+            self.selected_rails = rails
+            self.selected_rails_pub.publish(
+                String(data=",".join(str(value) for value in rails)))
+            if command == "START":
+                # Let the BT receive selected rails before its trigger callback.
+                self._schedule_mission_trigger()
+                self.mission_state = "RUNNING"
+            self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "PAUSE":
+            self.mission_halt_pub.publish(Bool(data=True))
+            self._stop_motion()
+            self.mission_state = "PAUSED"
+            self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "RESUME":
+            if not self.selected_rails:
+                self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "REJECTED",
+                             "no selected rails to resume")
+                return
+            self.selected_rails_pub.publish(
+                String(data=",".join(str(value) for value in self.selected_rails)))
+            self._schedule_mission_trigger()
+            self.mission_state = "RUNNING"
+            self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "CANCEL":
+            self.mission_halt_pub.publish(Bool(data=True))
+            self._cancel_navigation()
+            self._cancel_rail()
+            self._stop_motion()
+            self.mission_state = "CANCELLED"
+            self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "RETURN_HOME":
+            self.return_home_pub.publish(Bool(data=True))
+            self.mission_state = "RETURNING_HOME"
+            self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "SUCCEEDED")
+        else:
+            self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "REJECTED",
+                         "UNKNOWN_COMMAND")
+
+    def _schedule_mission_trigger(self):
+        if self.mission_trigger_timer is not None:
+            self.mission_trigger_timer.cancel()
+        self.mission_trigger_timer = self.create_timer(
+            0.15, self._publish_mission_trigger_once)
+
+    def _publish_mission_trigger_once(self):
+        self.mission_trigger_pub.publish(Bool(data=True))
+        if self.mission_trigger_timer is not None:
+            self.mission_trigger_timer.cancel()
+
+    @staticmethod
+    def _normalise_rails(values):
+        if not isinstance(values, list):
+            return []
+        result = []
+        for value in values:
+            try:
+                rail = int(value)
+            except (TypeError, ValueError):
+                continue
+            if rail > 0 and rail not in result:
+                result.append(rail)
+        return result
+
+    def _handle_arm(self, cid, command, params):
+        if command in ("MOVE_PRESET", "CANCEL"):
+            payload = {"command": command, "params": params,
+                       "command_id": cid}
+            self.arm_command_pub.publish(
+                String(data=json.dumps(payload, ensure_ascii=False)))
+            self.arm_state = "MOVING" if command == "MOVE_PRESET" else "IDLE"
+            self._result(TOPIC_ARM_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "CAPTURE_TRIGGER":
+            if not self.capture_client.service_is_ready():
+                self.capture_client.wait_for_service(timeout_sec=0.2)
+            if not self.capture_client.service_is_ready():
+                self._result(TOPIC_ARM_CMD_RESULT, cid, command, "FAILED",
+                             "CAPTURE_SERVER_NOT_AVAILABLE")
+                return
+            self.arm_state = "CAPTURING"
+            future = self.capture_client.call_async(Trigger.Request())
+            future.add_done_callback(
+                lambda done: self._capture_result(done, cid, command))
+            self._result(TOPIC_ARM_CMD_RESULT, cid, command, "ACCEPTED")
+        else:
+            self._result(TOPIC_ARM_CMD_RESULT, cid, command, "REJECTED",
+                         "UNKNOWN_COMMAND")
+
+    def _capture_result(self, future, cid, command):
+        try:
+            response = future.result()
+            success, reason = bool(response.success), str(response.message)
+        except Exception as exc:
+            success, reason = False, str(exc)
+        self.arm_state = "IDLE" if success else "ERROR"
+        self._result(TOPIC_ARM_CMD_RESULT, cid, command,
+                     "SUCCEEDED" if success else "FAILED", reason)
+
+    def _handle_system(self, cid, command):
+        if command == "EMERGENCY_STOP":
+            self.emergency = True
+            self._cancel_navigation()
+            self._cancel_rail()
+            self.mission_halt_pub.publish(Bool(data=True))
+            self.rail_command_pub.publish(String(data="STOP"))
+            self._stop_motion()
+            self.emergency_pub.publish(Bool(data=True))
+            self.mode, self.task_state = "EMERGENCY_STOP", "STOPPED"
+            self.mission_state = "EMERGENCY_STOP"
+            self._result(TOPIC_SYSTEM_CMD_RESULT, cid, command, "SUCCEEDED")
+        elif command == "CLEAR_EMERGENCY":
+            self.emergency = False
+            self.emergency_pub.publish(Bool(data=False))
+            self.mode, self.task_state, self.error = "IDLE", "READY", None
+            self._result(TOPIC_SYSTEM_CMD_RESULT, cid, command, "SUCCEEDED")
+        else:
+            self._result(TOPIC_SYSTEM_CMD_RESULT, cid, command, "REJECTED",
+                         "UNKNOWN_COMMAND")
+
+    # Safety/status ------------------------------------------------------
+    def _cancel_navigation(self):
+        if self.nav_goal_handle is not None:
+            self.nav_goal_handle.cancel_goal_async()
+
+    def _cancel_rail(self):
+        if self.rail_goal_handle is not None:
+            self.rail_goal_handle.cancel_goal_async()
+
+    def _stop_motion(self):
+        self.cmd_vel_pub.publish(Twist())
+        self.jog_deadline = None
+
+    def _safety_tick(self):
+        if self.jog_deadline is not None and time.monotonic() >= self.jog_deadline:
+            self._stop_motion()
+            self.rail_command_pub.publish(String(data="STOP"))
+            if not self.emergency:
+                self.mode, self.task_state = "IDLE", "READY"
+
+    def _result(self, topic, cid, command, status, message=""):
+        payload = {
+            "robot_id": ROBOT_ID,
+            "command_id": cid,
+            "command": command,
+            "status": status,
+            "success": status == "SUCCEEDED",
+            "message": message,
+            "timestamp": time.time(),
+        }
+        self._mqtt_publish(topic, payload)
+        if status in ("FAILED", "REJECTED", "EXPIRED"):
+            self._publish_event("COMMAND_FAILED", payload)
+
+    def _amr_status(self, distance_remaining=None):
+        with self.state_lock:
+            pose = dict(self.pose) if self.pose else None
+        return {
+            "robot_id": ROBOT_ID,
+            "state": self.mode,
+            "task_state": self.task_state,
+            "pose": pose,
+            "distance_remaining": distance_remaining,
+            "emergency_stop": self.emergency,
+            "error": self.error,
+            "timestamp": time.time(),
+        }
+
+    def _publish_periodic(self):
+        amr = self._amr_status()
+        self._mqtt_publish(TOPIC_AMR_STATUS, amr, retain=True)
+        if self.pose is not None:
+            self._mqtt_publish(TOPIC_AMR_POSE, {
+                "robot_id": ROBOT_ID, "pose": self.pose, "timestamp": time.time()})
+        if self.path:
+            self._mqtt_publish(TOPIC_AMR_PATH, {
+                "robot_id": ROBOT_ID, "path": self.path, "timestamp": time.time()})
+        arm = {
+            "robot_id": ROBOT_ID,
+            "connection": "ONLINE" if self.joints else "UNKNOWN",
+            "state": self.arm_state,
+            "joints": self.joints,
+            "timestamp": time.time(),
+        }
+        self._mqtt_publish(TOPIC_ARM_STATUS, arm, retain=True)
+        if self.joints:
+            self._mqtt_publish(TOPIC_ARM_JOINT_STATES, {
+                "robot_id": ROBOT_ID, "joints": self.joints,
+                "timestamp": time.time()})
+        mission = {
+            "robot_id": ROBOT_ID, "state": self.mission_state,
+            "selected_rails": self.selected_rails, "timestamp": time.time()}
+        self._mqtt_publish(TOPIC_MISSION_STATUS, mission, retain=True)
+        health = {
+            "robot_id": ROBOT_ID,
+            "mqtt_connected": self.mqtt_connected,
+            "ros_ok": rclpy.ok(),
+            "battery": self.battery,
+            "timestamp": time.time(),
+        }
+        self._mqtt_publish(TOPIC_HEALTH, health, retain=True)
+        self._mqtt_publish(TOPIC_STATUS, {
+            "robot_id": ROBOT_ID,
+            "device_path": DEVICE_PATH,
+            "state": self.mode,
+            "task_state": self.task_state,
+            "pose": self.pose,
+            "amr": amr,
+            "arm": arm,
+            "routine": mission,
+            "health": health,
+            "last_seen": time.time(),
+        }, retain=True)
+
+    def _publish_event(self, event: str, extra=None):
+        payload = {"robot_id": ROBOT_ID, "event": event, "timestamp": time.time()}
+        if isinstance(extra, dict):
+            payload.update(extra)
+        self._mqtt_publish(TOPIC_EVENT, payload)
+
+    def destroy_node(self):
+        self._stop_motion()
+        self.rail_command_pub.publish(String(data="STOP"))
+        self._publish_event("ROBOT_AGENT_SHUTDOWN")
+        try:
+            self.mqtt.disconnect()
+            self.mqtt.loop_stop()
         except Exception:
             pass
+        return super().destroy_node()
 
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = RobotAgent()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
