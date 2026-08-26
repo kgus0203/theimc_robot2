@@ -86,6 +86,7 @@ class RobotAgent(Node):
         self.declare_parameter("pose_topic", "/amcl_pose")
         self.declare_parameter("plan_topic", "/plan")
         self.declare_parameter("web_cmd_vel_topic", "/cmd_vel_teleop")
+        self.declare_parameter("rail_cmd_vel_topic", "/cmd_rail")
         self.declare_parameter("rail_command_topic", "/rail_command")
         self.declare_parameter("arm_command_topic", "/arm_command")
         self.declare_parameter("capture_service", "/capture_image")
@@ -114,6 +115,8 @@ class RobotAgent(Node):
         self.nav_command_id = None
         self.rail_command_id = None
         self.jog_deadline: Optional[float] = None
+        self.base_jog_active = False
+        self.rail_jog_active = False
         self.mission_trigger_timer = None
 
         self.initial_pose_pub = self.create_publisher(
@@ -121,6 +124,8 @@ class RobotAgent(Node):
             str(self.get_parameter("initial_pose_topic").value), 10)
         self.cmd_vel_pub = self.create_publisher(
             Twist, str(self.get_parameter("web_cmd_vel_topic").value), 10)
+        self.rail_cmd_vel_pub = self.create_publisher(
+            Twist, str(self.get_parameter("rail_cmd_vel_topic").value), 10)
         self.rail_command_pub = self.create_publisher(
             String, str(self.get_parameter("rail_command_topic").value), 10)
         self.arm_command_pub = self.create_publisher(
@@ -448,13 +453,27 @@ class RobotAgent(Node):
 
     def _jog(self, params, ttl_ms):
         if str(params.get("mode", "NORMAL_JOG")).upper() == "RAIL_JOG":
+            if self.base_jog_active:
+                self.cmd_vel_pub.publish(Twist())
+                self.base_jog_active = False
             direction = str(params.get("direction", "STOP")).upper()
-            value = {"FORWARD": "FORWARD", "BACKWARD": "BACK",
-                     "BACK": "BACK", "STOP": "STOP"}.get(direction)
-            if value is None:
+            direction_sign = {
+                "FORWARD": 1.0,
+                "BACKWARD": -1.0,
+                "BACK": -1.0,
+                "STOP": 0.0,
+            }.get(direction)
+            if direction_sign is None:
                 raise ValueError(f"invalid rail direction: {direction}")
-            self.rail_command_pub.publish(String(data=value))
+            requested_speed = abs(float(params.get("speed", 0.0)))
+            rail_twist = Twist()
+            rail_twist.linear.x = direction_sign * requested_speed
+            self.rail_cmd_vel_pub.publish(rail_twist)
+            self.rail_jog_active = direction_sign != 0.0
         else:
+            if self.rail_jog_active:
+                self.rail_cmd_vel_pub.publish(Twist())
+                self.rail_jog_active = False
             max_v = float(self.get_parameter("jog_max_linear").value)
             max_w = float(self.get_parameter("jog_max_angular").value)
             vx = max(-max_v, min(max_v, float(params.get("vx", 0.0))))
@@ -463,6 +482,7 @@ class RobotAgent(Node):
             twist.linear.x = vx
             twist.angular.z = wz
             self.cmd_vel_pub.publish(twist)
+            self.base_jog_active = vx != 0.0 or wz != 0.0
         duration = max(0.05, min(float(ttl_ms or 500) / 1000.0, 2.0))
         self.jog_deadline = time.monotonic() + duration
         self.mode, self.task_state = "MANUAL", "JOGGING"
@@ -603,12 +623,15 @@ class RobotAgent(Node):
 
     def _stop_motion(self):
         self.cmd_vel_pub.publish(Twist())
+        self.base_jog_active = False
+        if self.rail_jog_active:
+            self.rail_cmd_vel_pub.publish(Twist())
+            self.rail_jog_active = False
         self.jog_deadline = None
 
     def _safety_tick(self):
         if self.jog_deadline is not None and time.monotonic() >= self.jog_deadline:
             self._stop_motion()
-            self.rail_command_pub.publish(String(data="STOP"))
             if not self.emergency:
                 self.mode, self.task_state = "IDLE", "READY"
 
