@@ -1,3 +1,0 @@
-[1.851s] Invoking command in '/home/jeff/theimc_robot/build/sllidar_ros2': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble /usr/bin/cmake --build /home/jeff/theimc_robot/build/sllidar_ros2 -- -j6 -l6
-[1.968s] [ 10%] Built target sllidar_client
-[1.977s] [100%] Built target sllidar_node

@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Twist
 from std_srvs.srv import SetBool
+from std_msgs.msg import Bool, String
 import math
 
 class ArucoDockerNode(Node):
@@ -25,10 +26,28 @@ class ArucoDockerNode(Node):
         self.k_angular = 0.5 
         self.k_yaw = 1.0     
         
-        self.max_linear_vel = 0.1   
-        self.max_angular_vel = 0.15 
-        self.min_linear_vel = 0.04 
+        self.max_linear_vel = 0.1
+        self.max_angular_vel = 0.15
+        self.min_linear_vel = 0.04
         self.min_angular_vel = 0.05
+
+        # --- [4] ArUco marker search rotation ---
+        # If the marker is not visible while docking is active, rotate roughly
+        # one full turn. This is time-based because this node does not currently
+        # subscribe to IMU/odom heading.
+        self.declare_parameter('marker_lost_start_sec', 1.5)
+        self.marker_lost_start_sec = float(
+            self.get_parameter('marker_lost_start_sec').value
+        )
+        self.search_angular_vel = 0.15       # rad/s
+        self.search_rotation_rad = 2.0 * math.pi
+        self.search_timeout_sec = (
+            self.search_rotation_rad / abs(self.search_angular_vel)
+        )
+
+        self.is_searching_marker = False
+        self.search_start_time = None
+        self.last_pose_log_time = None
 
         self.subscription = self.create_subscription(
             PoseStamped,
@@ -40,17 +59,40 @@ class ArucoDockerNode(Node):
         # self.cmd_pub = self.create_publisher(Twist, '/dock_vel', 10)
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
 
+        # GUI/BT command service.
         self.srv = self.create_service(
-            SetBool, 
-            'toggle_docking', 
+            SetBool,
+            '/toggle_docking',
             self.toggle_callback
         )
 
-        # --- [4] 마커 소실 대비 워치독 타이머 ---
+        # Actual docking state/result topics.
+        self.status_pub = self.create_publisher(
+            String,
+            '/docking_status',
+            10
+        )
+        self.complete_pub = self.create_publisher(
+            Bool,
+            '/docking_complete',
+            10
+        )
+
+        # --- [5] 마커 소실 / 탐색 회전 타이머 ---
         self.last_pose_time = self.get_clock().now()
         self.watchdog_timer = self.create_timer(0.5, self.check_timeout)
 
         self.get_logger().info("Aruco Docker Node Started! (Status: Standby)")
+        self.publish_docking_status('STANDBY', completed=False)
+
+    def publish_docking_status(self, status, completed=False):
+        status_msg = String()
+        status_msg.data = str(status)
+        self.status_pub.publish(status_msg)
+
+        complete_msg = Bool()
+        complete_msg.data = bool(completed)
+        self.complete_pub.publish(complete_msg)
 
     # 쿼터니언(x,y,z,w)을 오일러 각도(roll, pitch, yaw)로 변환
     def euler_from_quaternion(self, x, y, z, w):
@@ -61,35 +103,107 @@ class ArucoDockerNode(Node):
 
     def toggle_callback(self, request, response):
         self.is_docking_active = request.data
-        
+
         if self.is_docking_active:
-            self.last_pose_time = self.get_clock().now() 
+            self.last_pose_time = self.get_clock().now()
+            self.is_searching_marker = False
+            self.search_start_time = None
+
             self.get_logger().info("▶️ 도킹 모드가 활성화되었습니다.")
+            self.publish_docking_status('ACTIVE', completed=False)
             response.message = "Docking activated"
         else:
-            self.get_logger().info("⏸️ 도킹 모드가 비활성화되었습니다. 로봇을 정지합니다.")
+            self.is_searching_marker = False
+            self.search_start_time = None
+
+            self.get_logger().info(
+                "⏸️ 도킹 모드가 비활성화되었습니다. 로봇을 정지합니다."
+            )
             self.cmd_pub.publish(Twist())
+            self.publish_docking_status('OFF', completed=False)
             response.message = "Docking deactivated and robot stopped"
-            
+
+        # IMPORTANT:
+        # This means the ON/OFF command was accepted.
+        # It does NOT mean physical docking is complete.
         response.success = True
         return response
 
     def check_timeout(self):
         if not self.is_docking_active:
             return
-            
-        elapsed_time = (self.get_clock().now() - self.last_pose_time).nanoseconds / 1e9
-        
-        if elapsed_time > 0.7:  # 0.7초 이상 마커 정보가 들어오지 않으면
-            self.get_logger().warn("⚠️ ArUco 마커 소실, 정지합니다.")
-            self.cmd_pub.publish(Twist())
-            self.is_docking_active = False
+
+        now = self.get_clock().now()
+        elapsed_since_pose = (
+            now - self.last_pose_time
+        ).nanoseconds / 1e9
+
+        # Marker is still visible recently: normal docking control owns cmd_vel.
+        if elapsed_since_pose <= self.marker_lost_start_sec:
+            return
+
+        # Marker lost / not yet found -> start one-turn search.
+        if not self.is_searching_marker:
+            self.is_searching_marker = True
+            self.search_start_time = now
+
+            self.get_logger().warn(
+                "⚠️ ArUco 마커가 보이지 않습니다. "
+                "한 바퀴 탐색 회전을 시작합니다."
+            )
+            self.publish_docking_status('SEARCHING', completed=False)
+
+        elapsed_search = (
+            now - self.search_start_time
+        ).nanoseconds / 1e9
+
+        if elapsed_search < self.search_timeout_sec:
+            cmd = Twist()
+            cmd.angular.z = self.search_angular_vel
+            self.cmd_pub.publish(cmd)
+            return
+
+        # One approximate full rotation completed without detecting marker.
+        self.cmd_pub.publish(Twist())
+        self.is_searching_marker = False
+        self.search_start_time = None
+        self.is_docking_active = False
+
+        self.get_logger().warn(
+            "❌ 한 바퀴 탐색했지만 ArUco 마커를 찾지 못했습니다. 정지합니다."
+        )
+        self.publish_docking_status('MARKER_NOT_FOUND', completed=False)
 
     def pose_callback(self, msg):
         self.last_pose_time = self.get_clock().now()
 
         if not self.is_docking_active:
             return
+
+        # Visible confirmation that /aruco_pose is actually arriving.
+        now = self.get_clock().now()
+        if (
+            self.last_pose_log_time is None or
+            (now - self.last_pose_log_time).nanoseconds / 1e9 >= 1.0
+        ):
+            self.last_pose_log_time = now
+            self.get_logger().info(
+                '✅ /aruco_pose 수신: x=%.3f y=%.3f z=%.3f',
+                msg.pose.position.x,
+                msg.pose.position.y,
+                msg.pose.position.z,
+            )
+
+        # Marker found during search: immediately leave search mode.
+        if self.is_searching_marker:
+            self.is_searching_marker = False
+            self.search_start_time = None
+            self.cmd_pub.publish(Twist())
+
+            self.get_logger().info(
+                "✅ 탐색 중 ArUco 마커를 찾았습니다. 도킹 제어로 전환합니다."
+            )
+            self.publish_docking_status('ACTIVE', completed=False)
 
         # 1. 위치 및 각도 오차 계산
         current_z = msg.pose.position.z
@@ -107,7 +221,10 @@ class ArucoDockerNode(Node):
         if abs(error_z) <= self.tol_z and abs(error_x) <= self.tol_x and abs(error_yaw) <= self.tol_yaw:
             self.get_logger().info("✅ 도킹 완료")
             self.cmd_pub.publish(cmd)
-            self.is_docking_active = False 
+            self.is_docking_active = False
+            self.is_searching_marker = False
+            self.search_start_time = None
+            self.publish_docking_status('COMPLETED', completed=True)
             return
             
         # --- [3] 데드밴드(Deadband)가 적용된 속도 제어 ---

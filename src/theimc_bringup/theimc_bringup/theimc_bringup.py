@@ -70,7 +70,7 @@ class BringUp(Node):
         # Robot parameters
         self.wheel_separation = 1.0
         self.wheel_radius = 0.085
-        self.max_lin_vel_x = 0.5
+        self.max_lin_vel_x = 1.0
         self.max_ang_vel_z = 1.0
         self.max_rail_vel = 0.5
 
@@ -91,9 +91,19 @@ class BringUp(Node):
 
         # Obstacle state
         self.rail_obstacle = False
+        self.front_rail_obstacle = False
+        self.rear_rail_obstacle = False
         self.obstacle_stop_latched = False
+        self.last_rail_motion_direction = 'STOP'
         self.rail_obstacle_distance = 0.5
+
+        # Interpreted as +/- degrees from the front/rear center line.
+        # 45.0 means front sector -45..+45 deg and rear sector 135..225 deg.
         self.rail_obstacle_fov_deg = 45.0
+
+        # Prevent one 20 Hz timer callback from staying forever inside the
+        # serial-drain loop when STM32 is continuously streaming data.
+        self.max_serial_lines_per_update = 64
 
         qos_profile = QoSProfile(
             depth=20,
@@ -162,6 +172,11 @@ class BringUp(Node):
             '/rail_speed',
             qos_profile,
         )
+        self.pub_rail_command_state = self.create_publisher(
+            String,
+            '/rail_command_state',
+            qos_profile,
+        )
         self.pub_rail_odom = self.create_publisher(
             Odometry,
             '/rail/odom',
@@ -172,7 +187,16 @@ class BringUp(Node):
             '/rail_obstacle',
             10,
         )
-
+        self.pub_rail_obstacle_front = self.create_publisher(
+            Bool,
+            '/rail_obstacle_front',
+            10,
+        )
+        self.pub_rail_obstacle_rear = self.create_publisher(
+            Bool,
+            '/rail_obstacle_rear',
+            10,
+        )
 
         # 20 Hz serial receive/update loop
         self.create_timer(0.05, self.update_robot)
@@ -194,6 +218,11 @@ class BringUp(Node):
     def send_rail_velocity(self, rail_velocity):
         # STM32 RAIL command accepts one velocity value.
         self._write_serial_line(f'RAIL,{rail_velocity:.3f}')
+
+    def publish_rail_command_state(self, command):
+        msg = String()
+        msg.data = str(command).strip().upper()
+        self.pub_rail_command_state.publish(msg)
 
     def cb_cmd_vel_msg(self, msg):
         vx = 0.0 if abs(msg.linear.x) < 0.01 else msg.linear.x
@@ -217,33 +246,52 @@ class BringUp(Node):
         else:
             requested = 'STOP'
 
-        if requested in ('FORWARD', 'BACK') and self.rail_obstacle:
-            self.get_logger().warning(
-                f'Blocked rail velocity command [{requested}] due to obstacle.'
-            )
-            self.send_rail_velocity(0.0)
-            return
+        if requested in ('FORWARD', 'BACK'):
+            self.last_rail_motion_direction = requested
+
+            if self._obstacle_for_direction(requested):
+                self.get_logger().warning(
+                    f'Blocked rail velocity command [{requested}] due to obstacle.'
+                )
+                self.send_rail_velocity(0.0)
+                self.publish_rail_command_state('STOP')
+                self.requested_rail_command = requested
+                self.obstacle_stop_latched = True
+                return
 
         self.requested_rail_command = requested
         self.send_rail_velocity(rail_velocity)
+        self.publish_rail_command_state(requested)
 
     def cb_rail_cmd_msg(self, msg):
         """Compatibility path for existing GUI/BT string commands."""
         command = msg.data.strip().upper()
 
-        # DETECTED / ON / OUT were STM-side state-machine commands and are removed.
         if command not in ('FORWARD', 'BACK', 'STOP'):
             self.get_logger().warning(f'Unsupported rail command: {command}')
             return
 
-        if command in ('FORWARD', 'BACK') and self.rail_obstacle:
-            self.get_logger().warning(
-                f'Cannot execute [{command}] due to detected obstacle.'
-            )
-            return
+        if command in ('FORWARD', 'BACK'):
+            self.last_rail_motion_direction = command
 
+            if self._obstacle_for_direction(command):
+                self.get_logger().warning(
+                    f'Cannot execute [{command}] due to detected obstacle.'
+                )
+                self._write_serial_line('STOP')
+                self.publish_rail_command_state('STOP')
+
+                # Keep the requested direction so scan monitoring remains active.
+                self.requested_rail_command = command
+                self.obstacle_stop_latched = True
+                return
+
+        # A user/BT STOP is accepted. If an obstacle is currently latched,
+        # last_rail_motion_direction is preserved so the display can remain
+        # DETECTED until the physical obstacle is actually gone.
         if self._write_serial_line(command):
             self.requested_rail_command = command
+            self.publish_rail_command_state(command)
             self.get_logger().info(f'Sent [{command}] command to STM32.')
 
     # ------------------------------------------------------------------
@@ -252,7 +300,7 @@ class BringUp(Node):
     def cb_rail_state_msg(self, msg):
         rail_state = msg.data.strip().upper()
 
-        if rail_state not in ('OUT_RAIL', 'ENTERING', 'ON_RAIL', 'EXITING'):
+        if rail_state not in ('MOVING_TO_RAIL', 'RAIL_APPROACH', 'ENTERING', 'ON_RAIL', 'WORKING', 'EXITING', 'OUT_RAIL'):
             self.get_logger().warning(f'Unknown rail state: {rail_state}')
             return
 
@@ -262,33 +310,56 @@ class BringUp(Node):
         previous_state = self.rail_state
         self.rail_state = rail_state
 
-        if rail_state in ('ENTERING', 'ON_RAIL'):
-            self.is_on_rail = True
-        else:  # EXITING / OUT_RAIL
-            self.is_on_rail = False
+        # Main-wheel odometry should be frozen while the robot is physically
+        # engaging with / riding on / leaving the rail.
+        self.is_on_rail = rail_state in (
+            'ENTERING',
+            'ON_RAIL',
+            'WORKING',
+            'EXITING',
+        )
 
-        # Start a fresh signed rail coordinate for each rail-entry cycle.
-        # The first <=120 mm ENTERING event becomes rail distance 0.0 m.
-        if rail_state == 'ENTERING' and previous_state != 'ENTERING':
-            self.reset_rail_odometry()
+        # /rail/odom is a per-ride coordinate. It is cleared only when the
+        # robot has completely left the rail.
+        if rail_state == 'OUT_RAIL' and previous_state != 'OUT_RAIL':
+            self.reset_rail_odometry(publish=True)
 
         self.get_logger().info(f'Rail state => [{rail_state}]')
 
     # ------------------------------------------------------------------
     # Rail obstacle detection
     # ------------------------------------------------------------------
+    def _obstacle_for_direction(self, direction):
+        if direction == 'FORWARD':
+            return self.front_rail_obstacle
+        if direction == 'BACK':
+            return self.rear_rail_obstacle
+        return False
+
+    def _publish_directional_obstacles(self):
+        msg_front = Bool()
+        msg_front.data = self.front_rail_obstacle
+        self.pub_rail_obstacle_front.publish(msg_front)
+
+        msg_rear = Bool()
+        msg_rear.data = self.rear_rail_obstacle
+        self.pub_rail_obstacle_rear.publish(msg_rear)
+
     def cb_scan(self, scan_msg):
-        if self.rail_state != 'ON_RAIL':
+        # Rail obstacle sensing is meaningful while riding or leaving the rail.
+        if self.rail_state not in ('ON_RAIL', 'WORKING', 'EXITING'):
+            self.front_rail_obstacle = False
+            self.rear_rail_obstacle = False
+            self._publish_directional_obstacles()
             self.set_rail_obstacle(False)
             return
 
-        if self.requested_rail_command not in ('FORWARD', 'BACK'):
-            self.set_rail_obstacle(False)
-            return
+        half_fov_rad = math.radians(self.rail_obstacle_fov_deg)
 
-        fov_rad = math.radians(self.rail_obstacle_fov_deg)
-        obstacle_detected = False
-        min_distance = float('inf')
+        front_detected = False
+        rear_detected = False
+        front_min = float('inf')
+        rear_min = float('inf')
 
         for index, distance in enumerate(scan_msg.ranges):
             if not math.isfinite(distance):
@@ -300,34 +371,70 @@ class BringUp(Node):
 
             angle = scan_msg.angle_min + index * scan_msg.angle_increment
 
-            if self.requested_rail_command == 'FORWARD':
-                if abs(angle) <= fov_rad:
-                    obstacle_detected = True
-                    min_distance = min(min_distance, distance)
-            else:  # BACK
-                rear_error = abs(abs(angle) - math.pi)
-                if rear_error <= fov_rad:
-                    obstacle_detected = True
-                    min_distance = min(min_distance, distance)
+            # Normalize to [-pi, +pi].
+            angle = math.atan2(math.sin(angle), math.cos(angle))
 
-        self.set_rail_obstacle(obstacle_detected, min_distance)
+            if abs(angle) <= half_fov_rad:
+                front_detected = True
+                front_min = min(front_min, distance)
+
+            rear_error = abs(abs(angle) - math.pi)
+            if rear_error <= half_fov_rad:
+                rear_detected = True
+                rear_min = min(rear_min, distance)
+
+        self.front_rail_obstacle = front_detected
+        self.rear_rail_obstacle = rear_detected
+        self._publish_directional_obstacles()
+
+        # The legacy /rail_obstacle topic remains direction-aware.
+        # If a STOP was issued because of an obstacle, continue monitoring the
+        # last motion direction until that obstacle physically disappears.
+        if self.requested_rail_command in ('FORWARD', 'BACK'):
+            monitor_direction = self.requested_rail_command
+        elif self.obstacle_stop_latched:
+            monitor_direction = self.last_rail_motion_direction
+        else:
+            monitor_direction = 'STOP'
+
+        if monitor_direction == 'FORWARD':
+            detected = front_detected
+            min_distance = front_min
+        elif monitor_direction == 'BACK':
+            detected = rear_detected
+            min_distance = rear_min
+        else:
+            detected = False
+            min_distance = float('inf')
+
+        self.set_rail_obstacle(detected, min_distance)
 
     def set_rail_obstacle(self, detected, distance=float('inf')):
+        previous = self.rail_obstacle
+        self.rail_obstacle = bool(detected)
+
         msg = Bool()
-        msg.data = detected
+        msg.data = self.rail_obstacle
         self.pub_rail_obstacle.publish(msg)
 
-        self.rail_obstacle = detected
-
-        if detected:
+        if self.rail_obstacle:
             if not self.obstacle_stop_latched:
-                self.get_logger().warning(
-                    f'Rail obstacle detected at {distance:.2f} m. Stopping rail motor.'
+                direction = (
+                    self.requested_rail_command
+                    if self.requested_rail_command in ('FORWARD', 'BACK')
+                    else self.last_rail_motion_direction
                 )
-                # STOP is retained for current STM compatibility.
+                self.get_logger().warning(
+                    f'Rail obstacle [{direction}] at {distance:.2f} m. '
+                    'Stopping rail motor.'
+                )
                 self._write_serial_line('STOP')
+                self.publish_rail_command_state('STOP')
                 self.obstacle_stop_latched = True
         else:
+            if previous:
+                self.get_logger().info('Rail obstacle cleared.')
+
             self.obstacle_stop_latched = False
 
     # ------------------------------------------------------------------
@@ -351,12 +458,17 @@ class BringUp(Node):
             latest_imu_line = None
             latest_tof_line = None
 
-            while self.stm_serial.in_waiting > 0:
+            lines_read = 0
+            while (
+                self.stm_serial.in_waiting > 0 and
+                lines_read < self.max_serial_lines_per_update
+            ):
                 line = (
                     self.stm_serial.readline()
                     .decode('utf-8', errors='ignore')
                     .strip()
                 )
+                lines_read += 1
 
                 if not line:
                     continue
@@ -420,24 +532,34 @@ class BringUp(Node):
         self.pub_rail_speed.publish(speed_msg)
 
         # 2) 1-D rail odometry
-        # STM already sends signed m/s, therefore simple averaging preserves
-        # forward (+) / backward (-) direction.
-        rail_linear_velocity = (rm1_velocity + rm2_velocity) / 2.0
+        # Raw rail motors can spin even while the robot is not actually on the
+        # rail. Only integrate distance in states that represent real rail
+        # travel. ENTERING is intentionally excluded, so ON_RAIL starts at 0 m.
+        measured_rail_velocity = (rm1_velocity + rm2_velocity) / 2.0
+        rail_odom_active = self.rail_state in (
+            'ON_RAIL',
+            'WORKING',
+            'EXITING',
+        )
 
         if self.rail_odom_last_time is not None:
             dt = (
                 timestamp_now - self.rail_odom_last_time
             ).nanoseconds * 1e-9
 
-            if dt > 0.0:
-                self.rail_odom_distance += rail_linear_velocity * dt
+            if rail_odom_active and dt > 0.0:
+                self.rail_odom_distance += measured_rail_velocity * dt
 
+        # Always refresh the timestamp. Otherwise time spent OUT_RAIL/ENTERING
+        # would be integrated as one large jump when ON_RAIL begins.
         self.rail_odom_last_time = timestamp_now
+
+        odom_velocity = measured_rail_velocity if rail_odom_active else 0.0
 
         self.publish_rail_odometry(
             timestamp_now,
             self.rail_odom_distance,
-            rail_linear_velocity,
+            odom_velocity,
         )
 
     def publish_rail_odometry(
@@ -484,9 +606,16 @@ class BringUp(Node):
 
         self.pub_rail_odom.publish(msg)
 
-    def reset_rail_odometry(self):
+    def reset_rail_odometry(self, publish=False):
         self.rail_odom_distance = 0.0
-        self.rail_odom_last_time = None
+        self.rail_odom_last_time = self.get_clock().now()
+
+        if publish:
+            self.publish_rail_odometry(
+                self.rail_odom_last_time,
+                0.0,
+                0.0,
+            )
 
         self.get_logger().info(
             'Rail odometry reset: distance = 0.000 m'

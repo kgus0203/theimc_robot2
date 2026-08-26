@@ -223,153 +223,83 @@ CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o: \
  /opt/ros/humble/include/behaviortree_cpp_v3/blackboard.h \
  /opt/ros/humble/include/behaviortree_cpp_v3/utils/strcat.hpp \
  /opt/ros/humble/include/behaviortree_cpp_v3/utils/wakeup_signal.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/twist.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__struct.hpp \
- /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_runtime_cpp/bounded_vector.hpp \
- /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_runtime_cpp/message_initialization.hpp \
- /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/message_initialization.h \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/vector3__struct.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__builder.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__traits.hpp \
- /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_runtime_cpp/traits.hpp \
- /usr/include/c++/11/codecvt /usr/include/c++/11/bits/codecvt.h \
- /usr/include/c++/11/iomanip /usr/include/c++/11/locale \
- /usr/include/c++/11/bits/locale_facets_nonio.h \
- /usr/include/aarch64-linux-gnu/c++/11/bits/time_members.h \
- /usr/include/aarch64-linux-gnu/c++/11/bits/messages_members.h \
- /usr/include/libintl.h /usr/include/c++/11/bits/locale_facets_nonio.tcc \
- /usr/include/c++/11/bits/locale_conv.h \
- /usr/include/c++/11/bits/quoted_string.h \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/vector3__traits.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__type_support.hpp \
- /opt/ros/humble/include/rosidl_typesupport_interface/rosidl_typesupport_interface/macros.h \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
- /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_typesupport_cpp/message_type_support.hpp \
- /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/message_type_support_struct.h \
- /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/visibility_control.h \
- /opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp \
- /usr/include/c++/11/csignal /usr/include/signal.h \
- /usr/include/aarch64-linux-gnu/bits/signum-generic.h \
- /usr/include/aarch64-linux-gnu/bits/signum-arch.h \
- /usr/include/aarch64-linux-gnu/bits/types/sig_atomic_t.h \
- /usr/include/aarch64-linux-gnu/bits/types/siginfo_t.h \
- /usr/include/aarch64-linux-gnu/bits/types/__sigval_t.h \
- /usr/include/aarch64-linux-gnu/bits/siginfo-arch.h \
- /usr/include/aarch64-linux-gnu/bits/siginfo-consts.h \
- /usr/include/aarch64-linux-gnu/bits/siginfo-consts-arch.h \
- /usr/include/aarch64-linux-gnu/bits/types/sigval_t.h \
- /usr/include/aarch64-linux-gnu/bits/types/sigevent_t.h \
- /usr/include/aarch64-linux-gnu/bits/sigevent-consts.h \
- /usr/include/aarch64-linux-gnu/bits/sigaction.h \
- /usr/include/aarch64-linux-gnu/bits/sigcontext.h \
- /usr/include/aarch64-linux-gnu/asm/sigcontext.h \
- /usr/include/linux/types.h /usr/include/aarch64-linux-gnu/asm/types.h \
- /usr/include/asm-generic/types.h /usr/include/asm-generic/int-ll64.h \
- /usr/include/aarch64-linux-gnu/asm/bitsperlong.h \
- /usr/include/asm-generic/bitsperlong.h /usr/include/linux/posix_types.h \
- /usr/include/linux/stddef.h \
- /usr/include/aarch64-linux-gnu/asm/posix_types.h \
- /usr/include/asm-generic/posix_types.h \
- /usr/include/aarch64-linux-gnu/asm/sve_context.h \
- /usr/include/aarch64-linux-gnu/bits/types/stack_t.h \
- /usr/include/aarch64-linux-gnu/sys/ucontext.h \
- /usr/include/aarch64-linux-gnu/sys/procfs.h \
- /usr/include/aarch64-linux-gnu/sys/time.h \
- /usr/include/aarch64-linux-gnu/sys/user.h \
- /usr/include/aarch64-linux-gnu/bits/procfs.h \
- /usr/include/aarch64-linux-gnu/bits/procfs-id.h \
- /usr/include/aarch64-linux-gnu/bits/procfs-prregset.h \
- /usr/include/aarch64-linux-gnu/bits/procfs-extra.h \
- /usr/include/aarch64-linux-gnu/bits/sigstack.h \
- /usr/include/aarch64-linux-gnu/bits/sigstksz.h /usr/include/unistd.h \
- /usr/include/aarch64-linux-gnu/bits/posix_opt.h \
- /usr/include/aarch64-linux-gnu/bits/environments.h \
- /usr/include/aarch64-linux-gnu/bits/confname.h \
- /usr/include/aarch64-linux-gnu/bits/getopt_posix.h \
- /usr/include/aarch64-linux-gnu/bits/getopt_core.h \
- /usr/include/aarch64-linux-gnu/bits/unistd_ext.h \
- /usr/include/linux/close_range.h \
- /usr/include/aarch64-linux-gnu/bits/ss_flags.h \
- /usr/include/aarch64-linux-gnu/bits/types/struct_sigstack.h \
- /usr/include/aarch64-linux-gnu/bits/sigthread.h \
- /usr/include/aarch64-linux-gnu/bits/signal_ext.h \
- /opt/ros/humble/include/rclcpp/rclcpp/executors.hpp \
- /opt/ros/humble/include/rclcpp/rclcpp/executors/multi_threaded_executor.hpp \
- /usr/include/c++/11/set /usr/include/c++/11/bits/stl_set.h \
- /usr/include/c++/11/bits/stl_multiset.h \
- /opt/ros/humble/include/rclcpp/rclcpp/executor.hpp \
- /usr/include/c++/11/list /usr/include/c++/11/bits/stl_list.h \
- /usr/include/c++/11/bits/list.tcc \
- /opt/ros/humble/include/rcl/rcl/guard_condition.h \
- /opt/ros/humble/include/rcl/rcl/allocator.h \
- /opt/ros/humble/include/rcutils/rcutils/allocator.h \
+ /opt/ros/humble/include/rclcpp/rclcpp/executors/single_threaded_executor.hpp \
+ /opt/ros/humble/include/rmw/rmw/rmw.h \
  /usr/lib/gcc/aarch64-linux-gnu/11/include/stdbool.h \
+ /opt/ros/humble/include/rcutils/rcutils/allocator.h \
  /opt/ros/humble/include/rcutils/rcutils/macros.h \
  /opt/ros/humble/include/rcutils/rcutils/testing/fault_injection.h \
  /opt/ros/humble/include/rcutils/rcutils/visibility_control.h \
  /opt/ros/humble/include/rcutils/rcutils/visibility_control_macros.h \
  /opt/ros/humble/include/rcutils/rcutils/types/rcutils_ret.h \
- /opt/ros/humble/include/rcl/rcl/context.h \
- /opt/ros/humble/include/rmw/rmw/init.h \
- /opt/ros/humble/include/rmw/rmw/init_options.h \
- /opt/ros/humble/include/rmw/rmw/domain_id.h \
- /opt/ros/humble/include/rmw/rmw/localhost.h \
- /opt/ros/humble/include/rmw/rmw/visibility_control.h \
- /opt/ros/humble/include/rmw/rmw/macros.h \
- /opt/ros/humble/include/rmw/rmw/ret_types.h \
- /opt/ros/humble/include/rmw/rmw/security_options.h \
- /opt/ros/humble/include/rcl/rcl/arguments.h \
- /opt/ros/humble/include/rcl/rcl/log_level.h \
- /opt/ros/humble/include/rcl/rcl/macros.h \
- /opt/ros/humble/include/rcl/rcl/types.h \
- /opt/ros/humble/include/rmw/rmw/types.h \
- /opt/ros/humble/include/rcutils/rcutils/logging.h \
- /opt/ros/humble/include/rcutils/rcutils/error_handling.h \
- /usr/include/c++/11/stdlib.h \
- /opt/ros/humble/include/rcutils/rcutils/snprintf.h \
- /opt/ros/humble/include/rcutils/rcutils/time.h \
  /opt/ros/humble/include/rcutils/rcutils/types.h \
  /opt/ros/humble/include/rcutils/rcutils/types/array_list.h \
  /opt/ros/humble/include/rcutils/rcutils/types/char_array.h \
  /opt/ros/humble/include/rcutils/rcutils/types/hash_map.h \
  /opt/ros/humble/include/rcutils/rcutils/types/string_array.h \
+ /opt/ros/humble/include/rcutils/rcutils/error_handling.h \
+ /usr/include/c++/11/stdlib.h \
+ /opt/ros/humble/include/rcutils/rcutils/snprintf.h \
  /opt/ros/humble/include/rcutils/rcutils/qsort.h \
  /opt/ros/humble/include/rcutils/rcutils/types/string_map.h \
  /opt/ros/humble/include/rcutils/rcutils/types/uint8_array.h \
+ /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/message_type_support_struct.h \
+ /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/visibility_control.h \
+ /opt/ros/humble/include/rosidl_typesupport_interface/rosidl_typesupport_interface/macros.h \
+ /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/service_type_support_struct.h \
+ /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/sequence_bound.h \
+ /opt/ros/humble/include/rmw/rmw/event.h \
+ /opt/ros/humble/include/rmw/rmw/macros.h \
+ /opt/ros/humble/include/rmw/rmw/types.h \
+ /opt/ros/humble/include/rcutils/rcutils/logging.h \
+ /opt/ros/humble/include/rcutils/rcutils/time.h \
  /opt/ros/humble/include/rmw/rmw/events_statuses/events_statuses.h \
  /opt/ros/humble/include/rmw/rmw/events_statuses/incompatible_qos.h \
  /opt/ros/humble/include/rmw/rmw/qos_policy_kind.h \
+ /opt/ros/humble/include/rmw/rmw/visibility_control.h \
  /opt/ros/humble/include/rmw/rmw/events_statuses/liveliness_changed.h \
  /opt/ros/humble/include/rmw/rmw/events_statuses/liveliness_lost.h \
  /opt/ros/humble/include/rmw/rmw/events_statuses/message_lost.h \
  /opt/ros/humble/include/rmw/rmw/events_statuses/offered_deadline_missed.h \
  /opt/ros/humble/include/rmw/rmw/events_statuses/requested_deadline_missed.h \
+ /opt/ros/humble/include/rmw/rmw/init.h \
+ /opt/ros/humble/include/rmw/rmw/init_options.h \
+ /opt/ros/humble/include/rmw/rmw/domain_id.h \
+ /opt/ros/humble/include/rmw/rmw/localhost.h \
+ /opt/ros/humble/include/rmw/rmw/ret_types.h \
+ /opt/ros/humble/include/rmw/rmw/security_options.h \
  /opt/ros/humble/include/rmw/rmw/serialized_message.h \
  /opt/ros/humble/include/rmw/rmw/subscription_content_filter_options.h \
  /opt/ros/humble/include/rmw/rmw/time.h \
+ /opt/ros/humble/include/rmw/rmw/event_callback_type.h \
+ /opt/ros/humble/include/rmw/rmw/message_sequence.h \
+ /opt/ros/humble/include/rmw/rmw/publisher_options.h \
+ /opt/ros/humble/include/rmw/rmw/qos_profiles.h \
+ /opt/ros/humble/include/rmw/rmw/subscription_options.h \
+ /opt/ros/humble/include/rclcpp/rclcpp/executor.hpp \
+ /usr/include/c++/11/list /usr/include/c++/11/bits/stl_list.h \
+ /usr/include/c++/11/bits/list.tcc \
+ /opt/ros/humble/include/rcl/rcl/guard_condition.h \
+ /opt/ros/humble/include/rcl/rcl/allocator.h \
+ /opt/ros/humble/include/rcl/rcl/context.h \
+ /opt/ros/humble/include/rcl/rcl/arguments.h \
+ /opt/ros/humble/include/rcl/rcl/log_level.h \
+ /opt/ros/humble/include/rcl/rcl/macros.h \
+ /opt/ros/humble/include/rcl/rcl/types.h \
  /opt/ros/humble/include/rcl/rcl/visibility_control.h \
  /opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h \
  /opt/ros/humble/include/rcl/rcl/init_options.h \
  /usr/lib/gcc/aarch64-linux-gnu/11/include/stdalign.h \
  /opt/ros/humble/include/rcl/rcl/wait.h \
  /opt/ros/humble/include/rcl/rcl/client.h \
- /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/service_type_support_struct.h \
  /opt/ros/humble/include/rcl/rcl/event_callback.h \
- /opt/ros/humble/include/rmw/rmw/event_callback_type.h \
  /opt/ros/humble/include/rcl/rcl/node.h \
  /opt/ros/humble/include/rcl/rcl/node_options.h \
  /opt/ros/humble/include/rcl/rcl/domain_id.h \
  /opt/ros/humble/include/rcl/rcl/service.h \
  /opt/ros/humble/include/rcl/rcl/subscription.h \
- /opt/ros/humble/include/rmw/rmw/message_sequence.h \
  /opt/ros/humble/include/rcl/rcl/timer.h \
  /opt/ros/humble/include/rcl/rcl/time.h \
- /opt/ros/humble/include/rmw/rmw/rmw.h \
- /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/sequence_bound.h \
- /opt/ros/humble/include/rmw/rmw/event.h \
- /opt/ros/humble/include/rmw/rmw/publisher_options.h \
- /opt/ros/humble/include/rmw/rmw/qos_profiles.h \
- /opt/ros/humble/include/rmw/rmw/subscription_options.h \
  /opt/ros/humble/include/rcl/rcl/event.h \
  /opt/ros/humble/include/rcl/rcl/publisher.h \
  /opt/ros/humble/include/rcpputils/rcpputils/scope_exit.hpp \
@@ -412,10 +342,23 @@ CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o: \
  /opt/ros/humble/include/rclcpp/rclcpp/duration.hpp \
  /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/duration.hpp \
  /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/detail/duration__struct.hpp \
+ /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_runtime_cpp/bounded_vector.hpp \
+ /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_runtime_cpp/message_initialization.hpp \
+ /opt/ros/humble/include/rosidl_runtime_c/rosidl_runtime_c/message_initialization.h \
  /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/detail/duration__builder.hpp \
  /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/detail/duration__traits.hpp \
+ /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_runtime_cpp/traits.hpp \
+ /usr/include/c++/11/codecvt /usr/include/c++/11/bits/codecvt.h \
+ /usr/include/c++/11/iomanip /usr/include/c++/11/locale \
+ /usr/include/c++/11/bits/locale_facets_nonio.h \
+ /usr/include/aarch64-linux-gnu/c++/11/bits/time_members.h \
+ /usr/include/aarch64-linux-gnu/c++/11/bits/messages_members.h \
+ /usr/include/libintl.h /usr/include/c++/11/bits/locale_facets_nonio.tcc \
+ /usr/include/c++/11/bits/locale_conv.h \
+ /usr/include/c++/11/bits/quoted_string.h \
  /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/detail/duration__type_support.hpp \
  /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /opt/ros/humble/include/rosidl_runtime_cpp/rosidl_typesupport_cpp/message_type_support.hpp \
  /opt/ros/humble/include/rcl/rcl/logging_rosout.h \
  /opt/ros/humble/include/rmw/rmw/incompatible_qos_events_statuses.h \
  /opt/ros/humble/include/rclcpp/rclcpp/type_support_decl.hpp \
@@ -539,7 +482,6 @@ CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o: \
  /opt/ros/humble/include/rclcpp/rclcpp/publisher_options.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/detail/rmw_implementation_specific_publisher_payload.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/future_return_code.hpp \
- /opt/ros/humble/include/rclcpp/rclcpp/executors/single_threaded_executor.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/node.hpp \
  /opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/list_parameters_result.hpp \
  /opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/list_parameters_result__struct.hpp \
@@ -613,6 +555,56 @@ CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o: \
  /opt/ros/humble/include/rclcpp/rclcpp/create_timer.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/node_interfaces/get_node_base_interface.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/node_interfaces/node_base_interface_traits.hpp \
+ /opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp \
+ /usr/include/c++/11/csignal /usr/include/signal.h \
+ /usr/include/aarch64-linux-gnu/bits/signum-generic.h \
+ /usr/include/aarch64-linux-gnu/bits/signum-arch.h \
+ /usr/include/aarch64-linux-gnu/bits/types/sig_atomic_t.h \
+ /usr/include/aarch64-linux-gnu/bits/types/siginfo_t.h \
+ /usr/include/aarch64-linux-gnu/bits/types/__sigval_t.h \
+ /usr/include/aarch64-linux-gnu/bits/siginfo-arch.h \
+ /usr/include/aarch64-linux-gnu/bits/siginfo-consts.h \
+ /usr/include/aarch64-linux-gnu/bits/siginfo-consts-arch.h \
+ /usr/include/aarch64-linux-gnu/bits/types/sigval_t.h \
+ /usr/include/aarch64-linux-gnu/bits/types/sigevent_t.h \
+ /usr/include/aarch64-linux-gnu/bits/sigevent-consts.h \
+ /usr/include/aarch64-linux-gnu/bits/sigaction.h \
+ /usr/include/aarch64-linux-gnu/bits/sigcontext.h \
+ /usr/include/aarch64-linux-gnu/asm/sigcontext.h \
+ /usr/include/linux/types.h /usr/include/aarch64-linux-gnu/asm/types.h \
+ /usr/include/asm-generic/types.h /usr/include/asm-generic/int-ll64.h \
+ /usr/include/aarch64-linux-gnu/asm/bitsperlong.h \
+ /usr/include/asm-generic/bitsperlong.h /usr/include/linux/posix_types.h \
+ /usr/include/linux/stddef.h \
+ /usr/include/aarch64-linux-gnu/asm/posix_types.h \
+ /usr/include/asm-generic/posix_types.h \
+ /usr/include/aarch64-linux-gnu/asm/sve_context.h \
+ /usr/include/aarch64-linux-gnu/bits/types/stack_t.h \
+ /usr/include/aarch64-linux-gnu/sys/ucontext.h \
+ /usr/include/aarch64-linux-gnu/sys/procfs.h \
+ /usr/include/aarch64-linux-gnu/sys/time.h \
+ /usr/include/aarch64-linux-gnu/sys/user.h \
+ /usr/include/aarch64-linux-gnu/bits/procfs.h \
+ /usr/include/aarch64-linux-gnu/bits/procfs-id.h \
+ /usr/include/aarch64-linux-gnu/bits/procfs-prregset.h \
+ /usr/include/aarch64-linux-gnu/bits/procfs-extra.h \
+ /usr/include/aarch64-linux-gnu/bits/sigstack.h \
+ /usr/include/aarch64-linux-gnu/bits/sigstksz.h /usr/include/unistd.h \
+ /usr/include/aarch64-linux-gnu/bits/posix_opt.h \
+ /usr/include/aarch64-linux-gnu/bits/environments.h \
+ /usr/include/aarch64-linux-gnu/bits/confname.h \
+ /usr/include/aarch64-linux-gnu/bits/getopt_posix.h \
+ /usr/include/aarch64-linux-gnu/bits/getopt_core.h \
+ /usr/include/aarch64-linux-gnu/bits/unistd_ext.h \
+ /usr/include/linux/close_range.h \
+ /usr/include/aarch64-linux-gnu/bits/ss_flags.h \
+ /usr/include/aarch64-linux-gnu/bits/types/struct_sigstack.h \
+ /usr/include/aarch64-linux-gnu/bits/sigthread.h \
+ /usr/include/aarch64-linux-gnu/bits/signal_ext.h \
+ /opt/ros/humble/include/rclcpp/rclcpp/executors.hpp \
+ /opt/ros/humble/include/rclcpp/rclcpp/executors/multi_threaded_executor.hpp \
+ /usr/include/c++/11/set /usr/include/c++/11/bits/stl_set.h \
+ /usr/include/c++/11/bits/stl_multiset.h \
  /opt/ros/humble/include/rclcpp/rclcpp/executors/static_single_threaded_executor.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/executors/static_executor_entities_collector.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/experimental/executable_list.hpp \

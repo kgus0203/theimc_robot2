@@ -1,3 +1,0 @@
-[35m[1mConsolidate compiler generated dependencies of target theimc_bt_nodes[0m
-[ 10%] Built target mission_bt_runner
-[ 15%] [32mBuilding CXX object CMakeFiles/theimc_bt_nodes.dir/src/is_obstacle_detected.cpp.o[0m

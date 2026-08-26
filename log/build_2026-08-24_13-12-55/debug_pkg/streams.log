@@ -1,0 +1,26 @@
+[2.152s] Invoking command in '/home/jeff/theimc_robot/build/debug_pkg': PYTHONPATH=/home/jeff/theimc_robot/build/debug_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/debug_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/debug_pkg/build --no-deps symlink_data
+[2.758s] running develop
+[3.159s] running egg_info
+[3.160s] creating debug_pkg.egg-info
+[3.160s] writing debug_pkg.egg-info/PKG-INFO
+[3.161s] writing dependency_links to debug_pkg.egg-info/dependency_links.txt
+[3.161s] writing entry points to debug_pkg.egg-info/entry_points.txt
+[3.162s] writing requirements to debug_pkg.egg-info/requires.txt
+[3.162s] writing top-level names to debug_pkg.egg-info/top_level.txt
+[3.163s] writing manifest file 'debug_pkg.egg-info/SOURCES.txt'
+[3.167s] reading manifest file 'debug_pkg.egg-info/SOURCES.txt'
+[3.168s] writing manifest file 'debug_pkg.egg-info/SOURCES.txt'
+[3.173s] running build_ext
+[3.173s] Creating /home/jeff/theimc_robot/install/debug_pkg/lib/python3.10/site-packages/debug-pkg.egg-link (link to .)
+[3.174s] Installing check_odom_straight_node script to /home/jeff/theimc_robot/install/debug_pkg/lib/debug_pkg
+[3.175s] Installing ekf_test_cmd_sequence script to /home/jeff/theimc_robot/install/debug_pkg/lib/debug_pkg
+[3.175s] Installing yolov8_visualizer_node script to /home/jeff/theimc_robot/install/debug_pkg/lib/debug_pkg
+[3.176s] 
+[3.176s] Installed /home/jeff/theimc_robot/build/debug_pkg
+[3.176s] running symlink_data
+[3.176s] creating /home/jeff/theimc_robot/install/debug_pkg/share/ament_index
+[3.177s] creating /home/jeff/theimc_robot/install/debug_pkg/share/ament_index/resource_index
+[3.177s] creating /home/jeff/theimc_robot/install/debug_pkg/share/ament_index/resource_index/packages
+[3.178s] symbolically linking /home/jeff/theimc_robot/build/debug_pkg/resource/debug_pkg -> /home/jeff/theimc_robot/install/debug_pkg/share/ament_index/resource_index/packages
+[3.178s] symbolically linking /home/jeff/theimc_robot/build/debug_pkg/package.xml -> /home/jeff/theimc_robot/install/debug_pkg/share/debug_pkg
+[3.263s] Invoked command in '/home/jeff/theimc_robot/build/debug_pkg' returned '0': PYTHONPATH=/home/jeff/theimc_robot/build/debug_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/debug_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/debug_pkg/build --no-deps symlink_data

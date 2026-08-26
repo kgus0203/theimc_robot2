@@ -1,31 +1,482 @@
 <root main_tree_to_execute="MainTree">
+
+  <!-- ========================================================= -->
+  <!-- MAIN                                                      -->
+  <!-- ========================================================= -->
   <BehaviorTree ID="MainTree">
+    <Sequence name="MissionWithReturnHome">
 
-    <Sequence name="RailTest">
+      <GetLocationPose
+        location="home"
+        x="{home_x}"
+        y="{home_y}"
+        yaw="{home_yaw}"/>
 
-      <!-- 반복 실행 방지용 시작 트리거 -->
-      <WaitForMissionTrigger selected_rails="{selected_rails}"/>
+      <SetBlackboard output_key="mission_return_mode" value="DIRECT"/>
+      <SetBlackboard output_key="last_executed_index" value="0"/>
+      <SetBlackboard output_key="return_mode" value="MISSION_COMPLETE"/>
 
-      <!-- 레일 진입 -->
+      <!--
+        IMPORTANT:
+        WaitForMissionTrigger is intentionally NOT placed here.
+        /return_home must be monitored even before a mission starts.
+      -->
+
+      <ForceSuccess>
+        <ReactiveFallback name="ReturnHomeMonitor">
+
+          <!-- ================================================= -->
+          <!-- Priority 1: LOW BATTERY                           -->
+          <!-- ================================================= -->
+          <Sequence name="LowBatteryRecovery">
+
+            <IsBatteryLow
+              threshold="20.0"
+              recovery_threshold="90.0"/>
+
+            <Switch3
+              variable="{mission_return_mode}"
+              case_1="EXIT_RAIL_HOME"
+              case_2="REVERSE_HOME"
+              case_3="DIRECT">
+
+              <!-- 레일 위: 정확한 m 저장 -> 안전 탈출 -->
+              <Sequence name="LowBatteryLeaveRail">
+
+                <SaveRailProgress
+                  rail_id="{rail_id}"
+                  completed="false"
+                  force="true"
+                  mark_resume="true"
+                  odom_stale_sec="0.5"
+                  saved_progress_m="{saved_progress_m}"/>
+
+                <SubTreePlus
+                  ID="ExitRailAndReverse"
+                  __autoremap="1"/>
+
+              </Sequence>
+
+              <!-- RailApproach 등의 도중이면 차체만 뒤로 빠짐 -->
+              <DriveCmdVel
+                linear_x="-0.1"
+                angular_z="0.0"
+                seconds="5.0"/>
+
+              <AlwaysSuccess/>
+              <AlwaysSuccess/>
+
+            </Switch3>
+
+            <GoToPose
+              x="{home_x}"
+              y="{home_y}"
+              yaw="{home_yaw}"/>
+
+            <ToggleDocking enable="true"/>
+
+            <WaitForCharge target_battery="90.0"/>
+
+            <ToggleDocking enable="false"/>
+
+            <SetBlackboard
+              output_key="mission_return_mode"
+              value="DIRECT"/>
+
+            <!-- ReactiveFallback이 mission branch를 다시 tick -->
+            <Inverter>
+              <AlwaysSuccess/>
+            </Inverter>
+
+          </Sequence>
+
+
+          <!-- ================================================= -->
+          <!-- Priority 2: MANUAL RETURN HOME                    -->
+          <!-- ================================================= -->
+          <ReturnHomeRequested return_mode="{return_mode}"/>
+
+
+          <!-- ================================================= -->
+          <!-- Priority 3: WAIT TRIGGER -> RESUME / NORMAL MISSION -->
+          <!-- /return_home remains reactive while waiting here.   -->
+          <!-- ================================================= -->
+          <Sequence name="WaitTriggerThenMission">
+
+            <!-- GUI 미션 수행: HOME 감시보다 낮은 우선순위 -->
+            <WaitForMissionTrigger selected_rails="{selected_rails}"/>
+
+            <!-- HOME에서 켜진 ArUco docking을 새 미션 시작 전에 반드시 해제 -->
+            <ToggleDocking enable="false"/>
+
+            <Fallback name="ResumeOrNormalMission">
+
+            <!-- 이전 중단 Rail/m가 있으면 우선 복귀 -->
+            <Sequence name="ResumeInterruptedRail">
+
+              <LoadResumeTarget
+                rail_id="{rail_id}"
+                progress_m="{resume_progress_m}"/>
+
+              <SubTreePlus
+                ID="ResumeRailRoutine"
+                rail_id="{rail_id}"
+                resume_progress_m="{resume_progress_m}"
+                mission_return_mode="{mission_return_mode}"
+                __autoremap="1"/>
+
+              <SetBlackboard
+                output_key="return_mode"
+                value="MISSION_COMPLETE"/>
+
+            </Sequence>
+
+
+            <!-- resume 없음: 일반 선택 레일 수행 -->
+            <Sequence name="MultiRailMission">
+
+              <Inverter>
+                <IsBatteryLow
+                  threshold="20.0"
+                  recovery_threshold="90.0"/>
+              </Inverter>
+
+              <ForEachRail
+                rail_list="{selected_rails}"
+                current_rail="{rail_id}"
+                start_index="{last_executed_index}"
+                last_executed_index="{last_executed_index}">
+
+                <SubTreePlus
+                  ID="RailRoutine"
+                  rail_id="{rail_id}"
+                  mission_return_mode="{mission_return_mode}"
+                  __autoremap="1"/>
+
+              </ForEachRail>
+
+              <GoToPose
+                x="{home_x}"
+                y="{home_y}"
+                yaw="{home_yaw}"/>
+
+              <ToggleDocking enable="true"/>
+
+              <SetBlackboard
+                output_key="return_mode"
+                value="MISSION_COMPLETE"/>
+
+            </Sequence>
+
+            </Fallback>
+
+          </Sequence>
+
+        </ReactiveFallback>
+      </ForceSuccess>
+
+
+      <!-- ===================================================== -->
+      <!-- ReturnHomeRequested result handler                    -->
+      <!-- ===================================================== -->
+      <Switch3
+        variable="{return_mode}"
+        case_1="EXIT_RAIL_HOME"
+        case_2="REVERSE_HOME"
+        case_3="DIRECT">
+
+        <!-- ON_RAIL / WORKING에서 수동 중단 -->
+        <Sequence name="LeaveRailAndReturnHome">
+
+          <!-- BACK 전에 정확한 중단 위치 저장 -->
+          <SaveRailProgress
+            rail_id="{rail_id}"
+            completed="false"
+            force="true"
+            mark_resume="true"
+            odom_stale_sec="0.5"
+            saved_progress_m="{saved_progress_m}"/>
+
+          <SubTreePlus
+            ID="ExitRailAndReverse"
+            __autoremap="1"/>
+
+          <SetBlackboard
+            output_key="mission_return_mode"
+            value="DIRECT"/>
+
+          <GoToPose
+            x="{home_x}"
+            y="{home_y}"
+            yaw="{home_yaw}"/>
+
+          <ToggleDocking enable="true"/>
+
+        </Sequence>
+
+
+        <!-- RailApproach 중 취소 -->
+        <Sequence name="ReverseAndReturnHome">
+
+          <DriveCmdVel
+            linear_x="-0.1"
+            angular_z="0.0"
+            seconds="5.0"/>
+
+          <SetBlackboard
+            output_key="mission_return_mode"
+            value="DIRECT"/>
+
+          <GoToPose
+            x="{home_x}"
+            y="{home_y}"
+            yaw="{home_yaw}"/>
+
+          <ToggleDocking enable="true"/>
+
+        </Sequence>
+
+
+        <!-- DIRECT -->
+        <Sequence name="DirectReturnHomeAndDock">
+
+          <GoToPose
+            x="{home_x}"
+            y="{home_y}"
+            yaw="{home_yaw}"/>
+
+          <ToggleDocking enable="true"/>
+
+        </Sequence>
+
+        <!-- MISSION_COMPLETE/default -->
+        <AlwaysSuccess/>
+
+      </Switch3>
+
+    </Sequence>
+  </BehaviorTree>
+
+
+  <!-- ========================================================= -->
+  <!-- COMMON ENTRY                                              -->
+  <!-- RailEnter = TOF state only                                -->
+  <!-- DriveUntilRailState = main wheel motion only              -->
+  <!-- ========================================================= -->
+  <BehaviorTree ID="EnterRail">
+    <Parallel
+      success_threshold="2"
+      failure_threshold="1">
+
       <RailEnter
-        enter_tof_mm="130.0"
-        settle_sec="2.0"
-        rail_velocity="0.3"
-        rail_drive_sec="2.0"
+        enter_tof_mm="140.0"
+        on_rail_tof_mm="160.0"
         timeout_sec="0.0"
-        tof_stale_sec="0.5"/>
+        tof_stale_sec="0.5"
+        enter_confirm_samples="2"
+        on_rail_confirm_samples="3"/>
 
-      <!-- 레일 탈출 -->
+      <DriveUntilRailState
+        linear_x="0.1"
+        angular_z="0.0"
+        target_state="ON_RAIL"
+        timeout_sec="0.0"/>
+
+    </Parallel>
+  </BehaviorTree>
+
+
+  <!-- ========================================================= -->
+  <!-- NORMAL RAIL ROUTINE                                       -->
+  <!-- ========================================================= -->
+  <BehaviorTree ID="RailRoutine">
+    <Sequence name="RailRoutineSequence">
+
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="DIRECT"/>
+
+      <GetRailPose
+        rail_id="{rail_id}"
+        x="{rail_x}"
+        y="{rail_y}"
+        yaw="{rail_yaw}"/>
+
+      <GoToPose
+        x="{rail_x}"
+        y="{rail_y}"
+        yaw="{rail_yaw}"/>
+
+
+      <!-- RailApproach 도중 복귀 요청 시 뒤로 빠질 수 있게 -->
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="REVERSE_HOME"/>
+
+      <RailApproach
+        timeout_sec="60.0"
+        x_tolerance="0.25"
+        angle_tolerance="3.0"
+        allow_reverse_align="true"/>
+
+
+      <!-- Approach SUCCESS -> wheel +1.0 -> TOF low/high -> ON_RAIL -> wheel STOP -->
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="EXIT_RAIL_HOME"/>
+
+      <SubTreePlus
+        ID="EnterRail"
+        __autoremap="1"/>
+
+
+      <!-- ===================================================== -->
+      <!-- TEST WORKING ROUTINE                                  -->
+      <!-- 누적 rail/odom 기준: 1.0m -> 2.0m -> 3.0m             -->
+      <!-- 각 RailMoveToDistance가 STOP + TARGET SUCCESS 후      -->
+      <!-- 다음 목표로 넘어감. 3개가 모두 SUCCESS여야 BACK 실행. -->
+      <!-- ===================================================== -->
+
+      <RailMoveToDistance
+        target_m="1.0"
+        tolerance_m="0.05"
+        timeout_sec="0.0"
+        odom_stale_sec="0.5"
+        reached_m="{work_reached_1_m}"/>
+
+      <RailMoveToDistance
+        target_m="2.0"
+        tolerance_m="0.05"
+        timeout_sec="0.0"
+        odom_stale_sec="0.5"
+        reached_m="{work_reached_2_m}"/>
+
+      <RailMoveToDistance
+        target_m="3.0"
+        tolerance_m="0.05"
+        timeout_sec="0.0"
+        odom_stale_sec="0.5"
+        reached_m="{work_reached_3_m}"/>
+
+      <!-- 모든 WORKING 목표 성공 후에만 탈출 -->
       <PublishRailCommand command="BACK"/>
 
       <RailExit
-        out_tof_mm="140.0"
+        exit_tof_mm="140.0"
+        out_rail_tof_mm="160.0"
         timeout_sec="0.0"
-        tof_stale_sec="0.5"/>
+        tof_stale_sec="0.5"
+        exit_confirm_samples="2"
+        out_rail_confirm_samples="3"/>
 
       <PublishRailCommand command="STOP"/>
 
-    </Sequence>
+      <!-- OUT_RAIL 직후 메인 휠 -1.0으로 5초 후진 -->
+      <DriveCmdVel
+        linear_x="-0.1"
+        angular_z="0.0"
+        seconds="5.0"/>
 
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="DIRECT"/>
+
+    </Sequence>
   </BehaviorTree>
+
+
+  <!-- ========================================================= -->
+  <!-- RESUME RAIL ROUTINE                                       -->
+  <!-- 미션 수행 버튼 재클릭 -> 중단 Rail/m 복귀 -> 그 위치 STOP -->
+  <!-- ========================================================= -->
+  <BehaviorTree ID="ResumeRailRoutine">
+    <Sequence name="ResumeRailRoutineSequence">
+
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="DIRECT"/>
+
+      <GetRailPose
+        rail_id="{rail_id}"
+        x="{rail_x}"
+        y="{rail_y}"
+        yaw="{rail_yaw}"/>
+
+      <GoToPose
+        x="{rail_x}"
+        y="{rail_y}"
+        yaw="{rail_yaw}"/>
+
+
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="REVERSE_HOME"/>
+
+      <RailApproach
+        timeout_sec="60.0"
+        x_tolerance="0.25"
+        angle_tolerance="3.0"
+        allow_reverse_align="true"/>
+
+
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="EXIT_RAIL_HOME"/>
+
+      <SubTreePlus
+        ID="EnterRail"
+        __autoremap="1"/>
+
+
+      <!-- rail/odom은 새 진입에서 0부터 시작.
+           저장된 중단 m까지 레일 모터 이동 -->
+      <RailMoveToDistance
+        target_m="{resume_progress_m}"
+        tolerance_m="0.05"
+        timeout_sec="0.0"
+        odom_stale_sec="0.5"
+        reached_m="{resume_reached_m}"/>
+
+
+      <!-- 목표 위치에 실제 도착한 뒤에만 resume flag 제거 -->
+      <ClearResumeTarget/>
+
+
+      <!-- 여기서 tree SUCCESS.
+           로봇은 중단되었던 레일 m 위치에서 STOP 상태. -->
+      <SetBlackboard
+        output_key="mission_return_mode"
+        value="EXIT_RAIL_HOME"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+
+  <!-- ========================================================= -->
+  <!-- COMMON EXIT                                               -->
+  <!-- ========================================================= -->
+  <BehaviorTree ID="ExitRailAndReverse">
+    <Sequence name="ExitRailAndReverseSequence">
+
+      <PublishRailCommand command="BACK"/>
+
+      <RailExit
+        exit_tof_mm="140.0"
+        out_rail_tof_mm="160.0"
+        timeout_sec="0.0"
+        tof_stale_sec="0.5"
+        exit_confirm_samples="2"
+        out_rail_confirm_samples="3"/>
+
+      <PublishRailCommand command="STOP"/>
+
+      <!-- OUT_RAIL 이후 멈춰 기다리지 않고 바로 5초 차체 후진 -->
+      <DriveCmdVel
+        linear_x="-0.2"
+        angular_z="0.0"
+        seconds="5.0"/>
+
+    </Sequence>
+  </BehaviorTree>
+
 </root>

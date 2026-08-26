@@ -1,0 +1,82 @@
+[0.000000] (-) TimerEvent: {}
+[0.001054] (-) JobUnselected: {'identifier': 'debug_pkg'}
+[0.001366] (-) JobUnselected: {'identifier': 'decision_making_pkg'}
+[0.001679] (-) JobUnselected: {'identifier': 'interfaces_pkg'}
+[0.001782] (-) JobUnselected: {'identifier': 'localizer_server'}
+[0.001828] (-) JobUnselected: {'identifier': 'theimc_bringup'}
+[0.001902] (-) JobUnselected: {'identifier': 'theimc_bt_nodes'}
+[0.001970] (-) JobUnselected: {'identifier': 'theimc_description'}
+[0.002035] (-) JobUnselected: {'identifier': 'theimc_navigation2'}
+[0.002098] (-) JobUnselected: {'identifier': 'theimc_teleop'}
+[0.002180] (camera_perception_pkg) JobQueued: {'identifier': 'camera_perception_pkg', 'dependencies': OrderedDict()}
+[0.002256] (camera_perception_pkg) JobStarted: {'identifier': 'camera_perception_pkg'}
+[0.099202] (-) TimerEvent: {}
+[0.199831] (-) TimerEvent: {}
+[0.300424] (-) TimerEvent: {}
+[0.401007] (-) TimerEvent: {}
+[0.501626] (-) TimerEvent: {}
+[0.602289] (-) TimerEvent: {}
+[0.702841] (-) TimerEvent: {}
+[0.803452] (-) TimerEvent: {}
+[0.904059] (-) TimerEvent: {}
+[1.004659] (-) TimerEvent: {}
+[1.105254] (-) TimerEvent: {}
+[1.205834] (-) TimerEvent: {}
+[1.306419] (-) TimerEvent: {}
+[1.407028] (-) TimerEvent: {}
+[1.507636] (-) TimerEvent: {}
+[1.608306] (-) TimerEvent: {}
+[1.708938] (-) TimerEvent: {}
+[1.809591] (-) TimerEvent: {}
+[1.910215] (-) TimerEvent: {}
+[2.010786] (-) TimerEvent: {}
+[2.111372] (-) TimerEvent: {}
+[2.211948] (-) TimerEvent: {}
+[2.312538] (-) TimerEvent: {}
+[2.413103] (-) TimerEvent: {}
+[2.513720] (-) TimerEvent: {}
+[2.614320] (-) TimerEvent: {}
+[2.639426] (camera_perception_pkg) Command: {'cmd': ['/usr/bin/python3', '-W', 'ignore:setup.py install is deprecated', '-W', 'ignore:easy_install command is deprecated', 'setup.py', 'develop', '--editable', '--build-directory', '/home/jeff/theimc_robot/build/camera_perception_pkg/build', '--no-deps', 'symlink_data'], 'cwd': '/home/jeff/theimc_robot/build/camera_perception_pkg', 'env': {'LESSOPEN': '| /usr/bin/lesspipe %s', 'USER': 'jeff', 'SSH_CLIENT': '192.168.0.8 42432 22', 'LC_TIME': 'ko_KR.UTF-8', 'XDG_SESSION_TYPE': 'tty', 'GIT_ASKPASS': '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/extensions/git/dist/askpass.sh', 'SHLVL': '2', 'LD_LIBRARY_PATH': '/home/jeff/theimc_robot/install/theimc_bt_nodes/lib:/home/jeff/theimc_robot/install/theimc_navigation2/lib:/home/jeff/theimc_robot/install/interfaces_pkg/lib:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/lib', 'BROWSER': '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/helpers/browser.sh', 'MOTD_SHOWN': 'pam', 'HOME': '/home/jeff', 'OLDPWD': '/home/jeff/theimc_robot', 'TERM_PROGRAM_VERSION': '1.120.0', 'VSCODE_IPC_HOOK_CLI': '/run/user/1002/vscode-ipc-c6b06492-7999-43c6-ae6b-663c12808b66.sock', 'ROS_PYTHON_VERSION': '3', 'VSCODE_GIT_ASKPASS_MAIN': '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/extensions/git/dist/askpass-main.js', 'LC_MONETARY': 'ko_KR.UTF-8', 'VSCODE_GIT_ASKPASS_NODE': '/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/node', 'VSCODE_PYTHON_AUTOACTIVATE_GUARD': '1', 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/1002/bus', 'COLORTERM': 'truecolor', 'COLCON_PREFIX_PATH': '/home/jeff/theimc_robot/install', 'ROS_DISTRO': 'humble', 'LOGNAME': 'jeff', '_': '/usr/bin/colcon', 'ROS_VERSION': '2', 'XDG_SESSION_CLASS': 'user', 'TERM': 'xterm-256color', 'XDG_SESSION_ID': '4', 'ROS_LOCALHOST_ONLY': '0', 'PATH': '/home/jeff/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/jeff/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/jeff/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/remote-cli:/home/jeff/.local/bin:/opt/ros/humble/bin:/home/jeff/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin', 'LC_ADDRESS': 'ko_KR.UTF-8', 'XDG_RUNTIME_DIR': '/run/user/1002', 'LANG': 'en_US.UTF-8', 'LC_TELEPHONE': 'ko_KR.UTF-8', 'LS_COLORS': 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:', 'VSCODE_GIT_IPC_HANDLE': '/run/user/1002/vscode-git-e19acbb9aa.sock', 'TERM_PROGRAM': 'vscode', 'ROS_DOMAIN_ID': '25', 'AMENT_PREFIX_PATH': '/home/jeff/theimc_robot/install/theimc_teleop:/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/theimc_bringup:/home/jeff/theimc_robot/install/sllidar_ros2:/home/jeff/theimc_robot/install/localizer_server:/home/jeff/theimc_robot/install/decision_making_pkg:/home/jeff/theimc_robot/install/interfaces_pkg:/home/jeff/theimc_robot/install/debug_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg:/opt/ros/humble', 'SHELL': '/bin/bash', 'LC_NAME': 'ko_KR.UTF-8', 'LESSCLOSE': '/usr/bin/lesspipe %s %s', 'LC_MEASUREMENT': 'ko_KR.UTF-8', 'LC_IDENTIFICATION': 'ko_KR.UTF-8', 'VSCODE_GIT_ASKPASS_EXTRA_ARGS': '', 'PWD': '/home/jeff/theimc_robot/build/camera_perception_pkg', 'LC_ALL': 'en_US.UTF-8', 'SSH_CONNECTION': '192.168.0.8 42432 192.168.0.81 22', 'XDG_DATA_DIRS': '/usr/share/gnome:/usr/local/share:/usr/share:/var/lib/snapd/desktop', 'PYTHONPATH': '/home/jeff/theimc_robot/build/camera_perception_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/camera_perception_pkg/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/theimc_teleop:/home/jeff/theimc_robot/install/theimc_teleop/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/theimc_bringup:/home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/localizer_server:/home/jeff/theimc_robot/install/localizer_server/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/decision_making_pkg:/home/jeff/theimc_robot/install/decision_making_pkg/lib/python3.10/site-packages:/home/jeff/theimc_robot/install/interfaces_pkg/local/lib/python3.10/dist-packages:/home/jeff/theimc_robot/build/debug_pkg:/home/jeff/theimc_robot/install/debug_pkg/lib/python3.10/site-packages:/home/jeff/theimc_robot/build/camera_perception_pkg:/home/jeff/theimc_robot/install/camera_perception_pkg/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages', 'LC_NUMERIC': 'ko_KR.UTF-8', 'LC_PAPER': 'ko_KR.UTF-8', 'COLCON': '1', 'CMAKE_PREFIX_PATH': '/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/sllidar_ros2:/home/jeff/theimc_robot/install/interfaces_pkg'}, 'shell': False}
+[2.714490] (-) TimerEvent: {}
+[2.815077] (-) TimerEvent: {}
+[2.915705] (-) TimerEvent: {}
+[3.016292] (-) TimerEvent: {}
+[3.042380] (camera_perception_pkg) StderrLine: {'line': b"/home/jeff/.local/lib/python3.10/site-packages/setuptools/_distutils/dist.py:289: UserWarning: Unknown distribution option: 'tests_require'\n"}
+[3.042986] (camera_perception_pkg) StderrLine: {'line': b'  warnings.warn(msg)\n'}
+[3.116441] (-) TimerEvent: {}
+[3.217041] (-) TimerEvent: {}
+[3.317679] (-) TimerEvent: {}
+[3.418417] (-) TimerEvent: {}
+[3.433330] (camera_perception_pkg) StdoutLine: {'line': b'running develop\n'}
+[3.518572] (-) TimerEvent: {}
+[3.619176] (-) TimerEvent: {}
+[3.719804] (-) TimerEvent: {}
+[3.820494] (-) TimerEvent: {}
+[3.884193] (camera_perception_pkg) StdoutLine: {'line': b'running egg_info\n'}
+[3.921604] (camera_perception_pkg) StdoutLine: {'line': b'creating camera_perception_pkg.egg-info\n'}
+[3.922098] (-) TimerEvent: {}
+[3.922367] (camera_perception_pkg) StdoutLine: {'line': b'writing camera_perception_pkg.egg-info/PKG-INFO\n'}
+[3.922942] (camera_perception_pkg) StdoutLine: {'line': b'writing dependency_links to camera_perception_pkg.egg-info/dependency_links.txt\n'}
+[3.923587] (camera_perception_pkg) StdoutLine: {'line': b'writing entry points to camera_perception_pkg.egg-info/entry_points.txt\n'}
+[3.923809] (camera_perception_pkg) StdoutLine: {'line': b'writing requirements to camera_perception_pkg.egg-info/requires.txt\n'}
+[3.923979] (camera_perception_pkg) StdoutLine: {'line': b'writing top-level names to camera_perception_pkg.egg-info/top_level.txt\n'}
+[3.924213] (camera_perception_pkg) StdoutLine: {'line': b"writing manifest file 'camera_perception_pkg.egg-info/SOURCES.txt'\n"}
+[4.001970] (camera_perception_pkg) StdoutLine: {'line': b"reading manifest file 'camera_perception_pkg.egg-info/SOURCES.txt'\n"}
+[4.004336] (camera_perception_pkg) StdoutLine: {'line': b"writing manifest file 'camera_perception_pkg.egg-info/SOURCES.txt'\n"}
+[4.022254] (-) TimerEvent: {}
+[4.044183] (camera_perception_pkg) StdoutLine: {'line': b'running build_ext\n'}
+[4.044984] (camera_perception_pkg) StdoutLine: {'line': b'Creating /home/jeff/theimc_robot/install/camera_perception_pkg/lib/python3.10/site-packages/camera-perception-pkg.egg-link (link to .)\n'}
+[4.047061] (camera_perception_pkg) StdoutLine: {'line': b'Installing aruco_detector_node script to /home/jeff/theimc_robot/install/camera_perception_pkg/lib/camera_perception_pkg\n'}
+[4.047659] (camera_perception_pkg) StdoutLine: {'line': b'Installing image_publisher_node script to /home/jeff/theimc_robot/install/camera_perception_pkg/lib/camera_perception_pkg\n'}
+[4.048486] (camera_perception_pkg) StdoutLine: {'line': b'Installing rail_info_extractor_node script to /home/jeff/theimc_robot/install/camera_perception_pkg/lib/camera_perception_pkg\n'}
+[4.048730] (camera_perception_pkg) StdoutLine: {'line': b'Installing yolov26_node script to /home/jeff/theimc_robot/install/camera_perception_pkg/lib/camera_perception_pkg\n'}
+[4.049220] (camera_perception_pkg) StdoutLine: {'line': b'\n'}
+[4.049402] (camera_perception_pkg) StdoutLine: {'line': b'Installed /home/jeff/theimc_robot/build/camera_perception_pkg\n'}
+[4.049550] (camera_perception_pkg) StdoutLine: {'line': b'running symlink_data\n'}
+[4.050025] (camera_perception_pkg) StdoutLine: {'line': b'creating /home/jeff/theimc_robot/install/camera_perception_pkg/share/ament_index/resource_index/packages\n'}
+[4.051191] (camera_perception_pkg) StdoutLine: {'line': b'symbolically linking /home/jeff/theimc_robot/build/camera_perception_pkg/resource/camera_perception_pkg -> /home/jeff/theimc_robot/install/camera_perception_pkg/share/ament_index/resource_index/packages\n'}
+[4.051585] (camera_perception_pkg) StdoutLine: {'line': b'symbolically linking /home/jeff/theimc_robot/build/camera_perception_pkg/package.xml -> /home/jeff/theimc_robot/install/camera_perception_pkg/share/camera_perception_pkg\n'}
+[4.122475] (-) TimerEvent: {}
+[4.147461] (camera_perception_pkg) CommandEnded: {'returncode': 0}
+[4.194896] (camera_perception_pkg) JobEnded: {'identifier': 'camera_perception_pkg', 'rc': 0}
+[4.197261] (-) EventReactorShutdown: {}

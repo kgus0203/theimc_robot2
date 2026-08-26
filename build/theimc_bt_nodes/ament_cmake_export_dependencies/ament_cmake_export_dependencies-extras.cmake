@@ -1,6 +1,6 @@
 # generated from ament_cmake_export_dependencies/cmake/ament_cmake_export_dependencies-extras.cmake.in
 
-set(_exported_dependencies "ament_index_cpp;behaviortree_cpp_v3;geometry_msgs;interfaces_pkg;nav2_behavior_tree;nav2_msgs;rclcpp;rclcpp_action;std_msgs;yaml_cpp_vendor")
+set(_exported_dependencies "ament_index_cpp;behaviortree_cpp_v3;geometry_msgs;interfaces_pkg;nav2_behavior_tree;nav2_msgs;nav_msgs;rclcpp;rclcpp_action;sensor_msgs;std_msgs;std_srvs;yaml_cpp_vendor")
 
 find_package(ament_cmake_libraries QUIET REQUIRED)
 

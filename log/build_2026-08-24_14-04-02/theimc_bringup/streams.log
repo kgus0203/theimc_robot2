@@ -1,0 +1,36 @@
+[2.319s] Invoking command in '/home/jeff/theimc_robot/build/theimc_bringup': PYTHONPATH=/home/jeff/theimc_robot/build/theimc_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/theimc_bringup/build --no-deps symlink_data
+[2.673s] /home/jeff/.local/lib/python3.10/site-packages/setuptools/_distutils/dist.py:289: UserWarning: Unknown distribution option: 'tests_require'
+[2.674s]   warnings.warn(msg)
+[2.742s] /home/jeff/.local/lib/python3.10/site-packages/setuptools/dist.py:759: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+[2.742s] !!
+[2.742s] 
+[2.743s]         ********************************************************************************
+[2.743s]         Please consider removing the following classifiers in favor of a SPDX license expression:
+[2.743s] 
+[2.744s]         License :: OSI Approved :: Apache Software License
+[2.744s] 
+[2.744s]         See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+[2.744s]         ********************************************************************************
+[2.745s] 
+[2.745s] !!
+[2.745s]   self._finalize_license_expression()
+[3.026s] running develop
+[3.457s] running egg_info
+[3.492s] writing theimc_bringup.egg-info/PKG-INFO
+[3.492s] writing dependency_links to theimc_bringup.egg-info/dependency_links.txt
+[3.493s] writing entry points to theimc_bringup.egg-info/entry_points.txt
+[3.493s] writing requirements to theimc_bringup.egg-info/requires.txt
+[3.494s] writing top-level names to theimc_bringup.egg-info/top_level.txt
+[3.568s] reading manifest file 'theimc_bringup.egg-info/SOURCES.txt'
+[3.572s] writing manifest file 'theimc_bringup.egg-info/SOURCES.txt'
+[3.608s] running build_ext
+[3.609s] Creating /home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages/theimc-bringup.egg-link (link to .)
+[3.610s] Installing bringup_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[3.611s] Installing isaac_vslam_odom_adapter_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[3.611s] Installing last_pose_manager_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[3.612s] Installing robot_agent_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[3.612s] Installing rtabmap_pose_validator_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[3.612s] 
+[3.613s] Installed /home/jeff/theimc_robot/build/theimc_bringup
+[3.613s] running symlink_data
+[3.701s] Invoked command in '/home/jeff/theimc_robot/build/theimc_bringup' returned '0': PYTHONPATH=/home/jeff/theimc_robot/build/theimc_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/theimc_bringup/build --no-deps symlink_data

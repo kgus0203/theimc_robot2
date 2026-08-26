@@ -193,8 +193,8 @@ def generate_launch_description():
     )
     nav2_remapping_group = GroupAction(
         actions=[
-            SetRemap(src='/cmd_vel', dst='/cmd_vel_nav'),
-            SetRemap(src='cmd_vel', dst='/cmd_vel_nav'),
+            SetRemap(src='/cmd_vel', dst='/cmd_vel_nav_smoothed'),
+            SetRemap(src='cmd_vel', dst='/cmd_vel_nav_smoothed'),
             nav2_bringup_launch
         ]
     )

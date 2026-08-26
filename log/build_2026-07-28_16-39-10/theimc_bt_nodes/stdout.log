@@ -1,4 +1,0 @@
-[35m[1mConsolidate compiler generated dependencies of target theimc_bt_nodes[0m
-[ 11%] Built target mission_bt_runner
-[ 17%] [32mBuilding CXX object CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o[0m
-[ 23%] [32mBuilding CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o[0m

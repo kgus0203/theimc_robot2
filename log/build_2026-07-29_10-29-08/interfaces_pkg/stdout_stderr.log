@@ -1,8 +1,0 @@
-[  1%] Built target interfaces_pkg__rs
-[  1%] Built target interfaces_pkg__cpp
-[ 13%] Built target interfaces_pkg__rosidl_generator_c
-failed to create symbolic link '/home/jeff/theimc_robot/build/interfaces_pkg/ament_cmake_python/interfaces_pkg/interfaces_pkg' because existing path cannot be removed: Is a directory
-gmake[2]: *** [CMakeFiles/ament_cmake_python_symlink_interfaces_pkg.dir/build.make:70: CMakeFiles/ament_cmake_python_symlink_interfaces_pkg] Error 1
-gmake[1]: *** [CMakeFiles/Makefile2:440: CMakeFiles/ament_cmake_python_symlink_interfaces_pkg.dir/all] Error 2
-gmake[1]: *** Waiting for unfinished jobs....
-gmake: *** [Makefile:146: all] Error 2

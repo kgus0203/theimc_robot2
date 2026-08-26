@@ -1,0 +1,19 @@
+[4.503s] Invoking command in '/home/jeff/theimc_robot/build/decision_making_pkg': CMAKE_PREFIX_PATH=/home/jeff/theimc_robot/install/interfaces_pkg:/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/sllidar_ros2 LD_LIBRARY_PATH=/home/jeff/theimc_robot/install/interfaces_pkg/lib:/home/jeff/theimc_robot/install/theimc_bt_nodes/lib:/home/jeff/theimc_robot/install/theimc_navigation2/lib:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/lib PYTHONPATH=/home/jeff/theimc_robot/build/decision_making_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/decision_making_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/decision_making_pkg/build --no-deps symlink_data
+[5.207s] running develop
+[5.684s] running egg_info
+[5.684s] writing decision_making_pkg.egg-info/PKG-INFO
+[5.685s] writing dependency_links to decision_making_pkg.egg-info/dependency_links.txt
+[5.685s] writing entry points to decision_making_pkg.egg-info/entry_points.txt
+[5.686s] writing requirements to decision_making_pkg.egg-info/requires.txt
+[5.689s] writing top-level names to decision_making_pkg.egg-info/top_level.txt
+[5.691s] reading manifest file 'decision_making_pkg.egg-info/SOURCES.txt'
+[5.693s] writing manifest file 'decision_making_pkg.egg-info/SOURCES.txt'
+[5.697s] running build_ext
+[5.697s] Creating /home/jeff/theimc_robot/install/decision_making_pkg/lib/python3.10/site-packages/decision-making-pkg.egg-link (link to .)
+[5.699s] Installing aruco_docker_node script to /home/jeff/theimc_robot/install/decision_making_pkg/lib/decision_making_pkg
+[5.700s] Installing rail_approach_action_server_node script to /home/jeff/theimc_robot/install/decision_making_pkg/lib/decision_making_pkg
+[5.700s] Installing rail_pd_controller_node script to /home/jeff/theimc_robot/install/decision_making_pkg/lib/decision_making_pkg
+[5.700s] 
+[5.701s] Installed /home/jeff/theimc_robot/build/decision_making_pkg
+[5.701s] running symlink_data
+[5.794s] Invoked command in '/home/jeff/theimc_robot/build/decision_making_pkg' returned '0': CMAKE_PREFIX_PATH=/home/jeff/theimc_robot/install/interfaces_pkg:/home/jeff/theimc_robot/install/theimc_bt_nodes:/home/jeff/theimc_robot/install/theimc_navigation2:/home/jeff/theimc_robot/install/theimc_description:/home/jeff/theimc_robot/install/sllidar_ros2 LD_LIBRARY_PATH=/home/jeff/theimc_robot/install/interfaces_pkg/lib:/home/jeff/theimc_robot/install/theimc_bt_nodes/lib:/home/jeff/theimc_robot/install/theimc_navigation2/lib:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/lib PYTHONPATH=/home/jeff/theimc_robot/build/decision_making_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/decision_making_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/decision_making_pkg/build --no-deps symlink_data

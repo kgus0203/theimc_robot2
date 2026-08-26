@@ -1,19 +1,24 @@
-Metadata-Version: 2.1
-Name: theimc-bringup
+Metadata-Version: 2.4
+Name: theimc_bringup
 Version: 7.0.0
 Summary: ROS2 Humble Packages for Slampibot
-Home-page: UNKNOWN
 Author: jeff
 Author-email: jeff@todo.com
 Maintainer: erail
 Maintainer-email: jeff@todo.com
 License: Apache License, Version 2.0
 Keywords: ROS
-Platform: UNKNOWN
 Classifier: Intended Audience :: Developers
 Classifier: License :: OSI Approved :: Apache Software License
 Classifier: Programming Language :: Python
 Classifier: Topic :: Software Development
-
-UNKNOWN
-
+Requires-Dist: setuptools
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: keywords
+Dynamic: license
+Dynamic: maintainer
+Dynamic: maintainer-email
+Dynamic: requires-dist
+Dynamic: summary

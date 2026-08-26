@@ -1,12 +1,13 @@
-Metadata-Version: 2.1
-Name: camera-perception-pkg
+Metadata-Version: 2.4
+Name: camera_perception_pkg
 Version: 0.0.0
 Summary: TODO: Package description
-Home-page: UNKNOWN
 Maintainer: hhk
 Maintainer-email: whaihong@g.skku.edu
 License: TODO: License declaration
-Platform: UNKNOWN
-
-UNKNOWN
-
+Requires-Dist: setuptools
+Dynamic: license
+Dynamic: maintainer
+Dynamic: maintainer-email
+Dynamic: requires-dist
+Dynamic: summary

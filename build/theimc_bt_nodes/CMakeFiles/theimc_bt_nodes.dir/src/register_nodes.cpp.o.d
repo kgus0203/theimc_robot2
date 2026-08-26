@@ -256,6 +256,7 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: \
  /usr/include/c++/11/bits/stl_deque.h /usr/include/c++/11/bits/deque.tcc \
  /usr/include/c++/11/bits/stl_queue.h \
  /opt/ros/humble/include/behaviortree_cpp_v3/decorators/delay_node.h \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/clear_resume_target.hpp \
  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/drive_cmd_vel.hpp \
  /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/twist.hpp \
  /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__struct.hpp \
@@ -696,7 +697,15 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: \
  /opt/ros/humble/include/rclcpp/rclcpp/wait_set_policies/thread_safe_synchronization.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/wait_set_policies/detail/write_preferring_read_write_lock.hpp \
  /opt/ros/humble/include/rclcpp/rclcpp/wait_set_template.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/drive_until_rail_state.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/string.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__type_support.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/for_each_rail.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/get_location_pose.hpp \
  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/get_rail_pose.hpp \
  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/go_to_pose.hpp \
  /opt/ros/humble/include/nav2_behavior_tree/bt_action_node.hpp \
@@ -799,29 +808,6 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/empty__traits.hpp \
  /opt/ros/humble/include/nav2_msgs/nav2_msgs/action/detail/navigate_to_pose__type_support.hpp \
  /opt/ros/humble/include/nav2_msgs/nav2_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/publish_rail_command.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/string.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__struct.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__builder.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__traits.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/string__type_support.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/rail_approach.hpp \
- /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/rail_approach.hpp \
- /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__struct.hpp \
- /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__builder.hpp \
- /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__traits.hpp \
- /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__type_support.hpp \
- /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/msg/rosidl_generator_cpp__visibility_control.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/return_home_requested.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/bool.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__struct.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__builder.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__traits.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__type_support.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_rail_state.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_mission_trigger.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_seconds.hpp \
  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/is_battery_low.hpp \
  /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/battery_state.hpp \
  /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/detail/battery_state__struct.hpp \
@@ -829,60 +815,40 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: \
  /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/detail/battery_state__traits.hpp \
  /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/detail/battery_state__type_support.hpp \
  /opt/ros/humble/include/sensor_msgs/sensor_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/save_current_pose.hpp \
- /opt/ros/humble/include/tf2_ros/tf2_ros/buffer.h \
- /opt/ros/humble/include/tf2_ros/tf2_ros/buffer.hpp \
- /opt/ros/humble/include/tf2_ros/tf2_ros/async_buffer_interface.hpp \
- /opt/ros/humble/include/tf2_ros/tf2_ros/visibility_control.hpp \
- /opt/ros/humble/include/tf2/tf2/buffer_core.hpp \
- /opt/ros/humble/include/tf2/tf2/LinearMath/Transform.hpp \
- /opt/ros/humble/include/tf2/tf2/LinearMath/Matrix3x3.hpp \
- /opt/ros/humble/include/tf2/tf2/LinearMath/Vector3.hpp \
- /opt/ros/humble/include/tf2/tf2/LinearMath/Scalar.hpp \
- /usr/include/c++/11/math.h /usr/include/c++/11/cfloat \
- /usr/lib/gcc/aarch64-linux-gnu/11/include/float.h \
- /opt/ros/humble/include/tf2/tf2/LinearMath/MinMax.hpp \
- /opt/ros/humble/include/tf2/tf2/visibility_control.h \
- /opt/ros/humble/include/tf2/tf2/LinearMath/Quaternion.hpp \
- /opt/ros/humble/include/tf2/tf2/LinearMath/QuadWord.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/transform_stamped.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/transform_stamped__struct.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/transform__struct.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/transform_stamped__builder.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/transform_stamped__traits.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/transform__traits.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/transform_stamped__type_support.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/velocity_stamped.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/velocity_stamped__struct.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/velocity_stamped__builder.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/velocity_stamped__traits.hpp \
- /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/velocity_stamped__type_support.hpp \
- /opt/ros/humble/include/tf2/tf2/buffer_core_interface.hpp \
- /opt/ros/humble/include/tf2/tf2/time.hpp \
- /opt/ros/humble/include/tf2/tf2/exceptions.hpp \
- /opt/ros/humble/include/tf2/tf2/transform_storage.hpp \
- /opt/ros/humble/include/tf2/tf2/LinearMath/Vector3.hpp \
- /opt/ros/humble/include/tf2/tf2/LinearMath/Quaternion.hpp \
- /opt/ros/humble/include/tf2/tf2/transform_datatypes.hpp \
- /opt/ros/humble/include/tf2_ros/tf2_ros/buffer_interface.hpp \
- /opt/ros/humble/include/tf2/tf2/convert.hpp \
- /opt/ros/humble/include/tf2/tf2/impl/convert.hpp \
- /opt/ros/humble/include/tf2_ros/tf2_ros/create_timer_interface.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/srv/frame_graph.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/srv/detail/frame_graph__struct.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/srv/detail/frame_graph__builder.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/srv/detail/frame_graph__traits.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/srv/detail/frame_graph__type_support.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
- /opt/ros/humble/include/tf2_ros/tf2_ros/transform_listener.h \
- /opt/ros/humble/include/tf2_ros/tf2_ros/transform_listener.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/tf_message.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__struct.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__builder.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__traits.hpp \
- /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__type_support.hpp \
- /opt/ros/humble/include/tf2_ros/tf2_ros/qos.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_charge.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/load_resume_target.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/publish_rail_command.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/rail_approach.hpp \
+ /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/rail_approach.hpp \
+ /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__struct.hpp \
+ /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__builder.hpp \
+ /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__traits.hpp \
+ /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/action/detail/rail_approach__type_support.hpp \
+ /home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_cpp/interfaces_pkg/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/rail_enter.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/float32.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__type_support.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/rail_exit.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/rail_move_to_distance.hpp \
+ /opt/ros/humble/include/nav_msgs/nav_msgs/msg/odometry.hpp \
+ /opt/ros/humble/include/nav_msgs/nav_msgs/msg/detail/odometry__struct.hpp \
+ /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/pose_with_covariance__struct.hpp \
+ /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist_with_covariance__struct.hpp \
+ /opt/ros/humble/include/nav_msgs/nav_msgs/msg/detail/odometry__builder.hpp \
+ /opt/ros/humble/include/nav_msgs/nav_msgs/msg/detail/odometry__traits.hpp \
+ /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/pose_with_covariance__traits.hpp \
+ /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist_with_covariance__traits.hpp \
+ /opt/ros/humble/include/nav_msgs/nav_msgs/msg/detail/odometry__type_support.hpp \
+ /opt/ros/humble/include/nav_msgs/nav_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/bool.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__type_support.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/return_home_requested.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/save_rail_progress.hpp \
  /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/toggle_docking.hpp \
  /opt/ros/humble/include/std_srvs/std_srvs/srv/set_bool.hpp \
  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__struct.hpp \
@@ -890,13 +856,5 @@ CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: \
  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__traits.hpp \
  /opt/ros/humble/include/std_srvs/std_srvs/srv/detail/set_bool__type_support.hpp \
  /opt/ros/humble/include/std_srvs/std_srvs/msg/rosidl_generator_cpp__visibility_control.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/is_rail_obstacle.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_rail_clear.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/get_location_pose.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/rail_enter.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/float32.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__struct.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__builder.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__traits.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float32__type_support.hpp \
- /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/rail_exit.hpp
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_charge.hpp \
+ /home/jeff/theimc_robot/src/theimc_bt_nodes/include/theimc_bt_nodes/wait_for_mission_trigger.hpp

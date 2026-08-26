@@ -223,6 +223,30 @@ mission_bt_runner/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/mission_bt_runner.dir/build.make CMakeFiles/mission_bt_runner.dir/build
 .PHONY : mission_bt_runner/fast
 
+src/clear_resume_target.o: src/clear_resume_target.cpp.o
+.PHONY : src/clear_resume_target.o
+
+# target to build an object file
+src/clear_resume_target.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o
+.PHONY : src/clear_resume_target.cpp.o
+
+src/clear_resume_target.i: src/clear_resume_target.cpp.i
+.PHONY : src/clear_resume_target.i
+
+# target to preprocess a source file
+src/clear_resume_target.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.i
+.PHONY : src/clear_resume_target.cpp.i
+
+src/clear_resume_target.s: src/clear_resume_target.cpp.s
+.PHONY : src/clear_resume_target.s
+
+# target to generate assembly for a file
+src/clear_resume_target.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.s
+.PHONY : src/clear_resume_target.cpp.s
+
 src/drive_cmd_vel.o: src/drive_cmd_vel.cpp.o
 .PHONY : src/drive_cmd_vel.o
 
@@ -246,6 +270,30 @@ src/drive_cmd_vel.s: src/drive_cmd_vel.cpp.s
 src/drive_cmd_vel.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.s
 .PHONY : src/drive_cmd_vel.cpp.s
+
+src/drive_until_rail_state.o: src/drive_until_rail_state.cpp.o
+.PHONY : src/drive_until_rail_state.o
+
+# target to build an object file
+src/drive_until_rail_state.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o
+.PHONY : src/drive_until_rail_state.cpp.o
+
+src/drive_until_rail_state.i: src/drive_until_rail_state.cpp.i
+.PHONY : src/drive_until_rail_state.i
+
+# target to preprocess a source file
+src/drive_until_rail_state.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.i
+.PHONY : src/drive_until_rail_state.cpp.i
+
+src/drive_until_rail_state.s: src/drive_until_rail_state.cpp.s
+.PHONY : src/drive_until_rail_state.s
+
+# target to generate assembly for a file
+src/drive_until_rail_state.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.s
+.PHONY : src/drive_until_rail_state.cpp.s
 
 src/for_each_rail.o: src/for_each_rail.cpp.o
 .PHONY : src/for_each_rail.o
@@ -367,29 +415,29 @@ src/is_battery_low.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s
 .PHONY : src/is_battery_low.cpp.s
 
-src/is_rail_obstacle.o: src/is_rail_obstacle.cpp.o
-.PHONY : src/is_rail_obstacle.o
+src/load_resume_target.o: src/load_resume_target.cpp.o
+.PHONY : src/load_resume_target.o
 
 # target to build an object file
-src/is_rail_obstacle.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o
-.PHONY : src/is_rail_obstacle.cpp.o
+src/load_resume_target.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o
+.PHONY : src/load_resume_target.cpp.o
 
-src/is_rail_obstacle.i: src/is_rail_obstacle.cpp.i
-.PHONY : src/is_rail_obstacle.i
+src/load_resume_target.i: src/load_resume_target.cpp.i
+.PHONY : src/load_resume_target.i
 
 # target to preprocess a source file
-src/is_rail_obstacle.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.i
-.PHONY : src/is_rail_obstacle.cpp.i
+src/load_resume_target.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.i
+.PHONY : src/load_resume_target.cpp.i
 
-src/is_rail_obstacle.s: src/is_rail_obstacle.cpp.s
-.PHONY : src/is_rail_obstacle.s
+src/load_resume_target.s: src/load_resume_target.cpp.s
+.PHONY : src/load_resume_target.s
 
 # target to generate assembly for a file
-src/is_rail_obstacle.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.s
-.PHONY : src/is_rail_obstacle.cpp.s
+src/load_resume_target.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.s
+.PHONY : src/load_resume_target.cpp.s
 
 src/mission_bt_runner.o: src/mission_bt_runner.cpp.o
 .PHONY : src/mission_bt_runner.o
@@ -511,6 +559,30 @@ src/rail_exit.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.s
 .PHONY : src/rail_exit.cpp.s
 
+src/rail_move_to_distance.o: src/rail_move_to_distance.cpp.o
+.PHONY : src/rail_move_to_distance.o
+
+# target to build an object file
+src/rail_move_to_distance.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o
+.PHONY : src/rail_move_to_distance.cpp.o
+
+src/rail_move_to_distance.i: src/rail_move_to_distance.cpp.i
+.PHONY : src/rail_move_to_distance.i
+
+# target to preprocess a source file
+src/rail_move_to_distance.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.i
+.PHONY : src/rail_move_to_distance.cpp.i
+
+src/rail_move_to_distance.s: src/rail_move_to_distance.cpp.s
+.PHONY : src/rail_move_to_distance.s
+
+# target to generate assembly for a file
+src/rail_move_to_distance.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.s
+.PHONY : src/rail_move_to_distance.cpp.s
+
 src/register_nodes.o: src/register_nodes.cpp.o
 .PHONY : src/register_nodes.o
 
@@ -559,29 +631,29 @@ src/return_home_requested.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.s
 .PHONY : src/return_home_requested.cpp.s
 
-src/save_current_pose.o: src/save_current_pose.cpp.o
-.PHONY : src/save_current_pose.o
+src/save_rail_progress.o: src/save_rail_progress.cpp.o
+.PHONY : src/save_rail_progress.o
 
 # target to build an object file
-src/save_current_pose.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o
-.PHONY : src/save_current_pose.cpp.o
+src/save_rail_progress.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o
+.PHONY : src/save_rail_progress.cpp.o
 
-src/save_current_pose.i: src/save_current_pose.cpp.i
-.PHONY : src/save_current_pose.i
+src/save_rail_progress.i: src/save_rail_progress.cpp.i
+.PHONY : src/save_rail_progress.i
 
 # target to preprocess a source file
-src/save_current_pose.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.i
-.PHONY : src/save_current_pose.cpp.i
+src/save_rail_progress.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.i
+.PHONY : src/save_rail_progress.cpp.i
 
-src/save_current_pose.s: src/save_current_pose.cpp.s
-.PHONY : src/save_current_pose.s
+src/save_rail_progress.s: src/save_rail_progress.cpp.s
+.PHONY : src/save_rail_progress.s
 
 # target to generate assembly for a file
-src/save_current_pose.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.s
-.PHONY : src/save_current_pose.cpp.s
+src/save_rail_progress.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.s
+.PHONY : src/save_rail_progress.cpp.s
 
 src/toggle_docking.o: src/toggle_docking.cpp.o
 .PHONY : src/toggle_docking.o
@@ -655,78 +727,6 @@ src/wait_for_mission_trigger.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.s
 .PHONY : src/wait_for_mission_trigger.cpp.s
 
-src/wait_for_rail_clear.o: src/wait_for_rail_clear.cpp.o
-.PHONY : src/wait_for_rail_clear.o
-
-# target to build an object file
-src/wait_for_rail_clear.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o
-.PHONY : src/wait_for_rail_clear.cpp.o
-
-src/wait_for_rail_clear.i: src/wait_for_rail_clear.cpp.i
-.PHONY : src/wait_for_rail_clear.i
-
-# target to preprocess a source file
-src/wait_for_rail_clear.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.i
-.PHONY : src/wait_for_rail_clear.cpp.i
-
-src/wait_for_rail_clear.s: src/wait_for_rail_clear.cpp.s
-.PHONY : src/wait_for_rail_clear.s
-
-# target to generate assembly for a file
-src/wait_for_rail_clear.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.s
-.PHONY : src/wait_for_rail_clear.cpp.s
-
-src/wait_for_rail_state.o: src/wait_for_rail_state.cpp.o
-.PHONY : src/wait_for_rail_state.o
-
-# target to build an object file
-src/wait_for_rail_state.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o
-.PHONY : src/wait_for_rail_state.cpp.o
-
-src/wait_for_rail_state.i: src/wait_for_rail_state.cpp.i
-.PHONY : src/wait_for_rail_state.i
-
-# target to preprocess a source file
-src/wait_for_rail_state.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.i
-.PHONY : src/wait_for_rail_state.cpp.i
-
-src/wait_for_rail_state.s: src/wait_for_rail_state.cpp.s
-.PHONY : src/wait_for_rail_state.s
-
-# target to generate assembly for a file
-src/wait_for_rail_state.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.s
-.PHONY : src/wait_for_rail_state.cpp.s
-
-src/wait_seconds.o: src/wait_seconds.cpp.o
-.PHONY : src/wait_seconds.o
-
-# target to build an object file
-src/wait_seconds.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o
-.PHONY : src/wait_seconds.cpp.o
-
-src/wait_seconds.i: src/wait_seconds.cpp.i
-.PHONY : src/wait_seconds.i
-
-# target to preprocess a source file
-src/wait_seconds.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.i
-.PHONY : src/wait_seconds.cpp.i
-
-src/wait_seconds.s: src/wait_seconds.cpp.s
-.PHONY : src/wait_seconds.s
-
-# target to generate assembly for a file
-src/wait_seconds.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/theimc_bt_nodes.dir/build.make CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.s
-.PHONY : src/wait_seconds.cpp.s
-
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -744,9 +744,15 @@ help:
 	@echo "... uninstall"
 	@echo "... mission_bt_runner"
 	@echo "... theimc_bt_nodes"
+	@echo "... src/clear_resume_target.o"
+	@echo "... src/clear_resume_target.i"
+	@echo "... src/clear_resume_target.s"
 	@echo "... src/drive_cmd_vel.o"
 	@echo "... src/drive_cmd_vel.i"
 	@echo "... src/drive_cmd_vel.s"
+	@echo "... src/drive_until_rail_state.o"
+	@echo "... src/drive_until_rail_state.i"
+	@echo "... src/drive_until_rail_state.s"
 	@echo "... src/for_each_rail.o"
 	@echo "... src/for_each_rail.i"
 	@echo "... src/for_each_rail.s"
@@ -762,9 +768,9 @@ help:
 	@echo "... src/is_battery_low.o"
 	@echo "... src/is_battery_low.i"
 	@echo "... src/is_battery_low.s"
-	@echo "... src/is_rail_obstacle.o"
-	@echo "... src/is_rail_obstacle.i"
-	@echo "... src/is_rail_obstacle.s"
+	@echo "... src/load_resume_target.o"
+	@echo "... src/load_resume_target.i"
+	@echo "... src/load_resume_target.s"
 	@echo "... src/mission_bt_runner.o"
 	@echo "... src/mission_bt_runner.i"
 	@echo "... src/mission_bt_runner.s"
@@ -780,15 +786,18 @@ help:
 	@echo "... src/rail_exit.o"
 	@echo "... src/rail_exit.i"
 	@echo "... src/rail_exit.s"
+	@echo "... src/rail_move_to_distance.o"
+	@echo "... src/rail_move_to_distance.i"
+	@echo "... src/rail_move_to_distance.s"
 	@echo "... src/register_nodes.o"
 	@echo "... src/register_nodes.i"
 	@echo "... src/register_nodes.s"
 	@echo "... src/return_home_requested.o"
 	@echo "... src/return_home_requested.i"
 	@echo "... src/return_home_requested.s"
-	@echo "... src/save_current_pose.o"
-	@echo "... src/save_current_pose.i"
-	@echo "... src/save_current_pose.s"
+	@echo "... src/save_rail_progress.o"
+	@echo "... src/save_rail_progress.i"
+	@echo "... src/save_rail_progress.s"
 	@echo "... src/toggle_docking.o"
 	@echo "... src/toggle_docking.i"
 	@echo "... src/toggle_docking.s"
@@ -798,15 +807,6 @@ help:
 	@echo "... src/wait_for_mission_trigger.o"
 	@echo "... src/wait_for_mission_trigger.i"
 	@echo "... src/wait_for_mission_trigger.s"
-	@echo "... src/wait_for_rail_clear.o"
-	@echo "... src/wait_for_rail_clear.i"
-	@echo "... src/wait_for_rail_clear.s"
-	@echo "... src/wait_for_rail_state.o"
-	@echo "... src/wait_for_rail_state.i"
-	@echo "... src/wait_for_rail_state.s"
-	@echo "... src/wait_seconds.o"
-	@echo "... src/wait_seconds.i"
-	@echo "... src/wait_seconds.s"
 .PHONY : help
 
 

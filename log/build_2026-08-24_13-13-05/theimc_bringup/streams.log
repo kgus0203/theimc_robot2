@@ -1,0 +1,21 @@
+[4.289s] Invoking command in '/home/jeff/theimc_robot/build/theimc_bringup': PYTHONPATH=/home/jeff/theimc_robot/build/theimc_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/theimc_bringup/build --no-deps symlink_data
+[4.929s] running develop
+[5.341s] running egg_info
+[5.341s] writing theimc_bringup.egg-info/PKG-INFO
+[5.342s] writing dependency_links to theimc_bringup.egg-info/dependency_links.txt
+[5.342s] writing entry points to theimc_bringup.egg-info/entry_points.txt
+[5.343s] writing requirements to theimc_bringup.egg-info/requires.txt
+[5.343s] writing top-level names to theimc_bringup.egg-info/top_level.txt
+[5.349s] reading manifest file 'theimc_bringup.egg-info/SOURCES.txt'
+[5.351s] writing manifest file 'theimc_bringup.egg-info/SOURCES.txt'
+[5.356s] running build_ext
+[5.356s] Creating /home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages/theimc-bringup.egg-link (link to .)
+[5.359s] Installing bringup_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[5.359s] Installing isaac_vslam_odom_adapter_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[5.360s] Installing last_pose_manager_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[5.360s] Installing robot_agent_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[5.361s] Installing rtabmap_pose_validator_node script to /home/jeff/theimc_robot/install/theimc_bringup/lib/theimc_bringup
+[5.362s] 
+[5.362s] Installed /home/jeff/theimc_robot/build/theimc_bringup
+[5.362s] running symlink_data
+[5.464s] Invoked command in '/home/jeff/theimc_robot/build/theimc_bringup' returned '0': PYTHONPATH=/home/jeff/theimc_robot/build/theimc_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jeff/theimc_robot/install/theimc_bringup/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/jeff/theimc_robot/build/theimc_bringup/build --no-deps symlink_data

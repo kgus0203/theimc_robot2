@@ -46,7 +46,7 @@ BT::NodeStatus IsBatteryLow::tick() {
     if (!has_received_battery_state_) {
         // ROS 2 주기에 따라 로그가 너무 자주 찍히지 않도록 Throttle을 쓰거나 
         // WARN 레벨로 유지해도 무방합니다.
-        RCLCPP_WARN(node_->get_logger(), "No battery state received yet.");
+        //RCLCPP_WARN(node_->get_logger(), "No battery state received yet.");
         return BT::NodeStatus::FAILURE;
     }
 

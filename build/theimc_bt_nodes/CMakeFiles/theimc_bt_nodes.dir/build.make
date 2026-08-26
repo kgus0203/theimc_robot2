@@ -69,10 +69,24 @@ include CMakeFiles/theimc_bt_nodes.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/theimc_bt_nodes.dir/flags.make
 
+CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/clear_resume_target.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/clear_resume_target.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/clear_resume_target.cpp > CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/clear_resume_target.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.s
+
 CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/drive_cmd_vel.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/drive_cmd_vel.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.i: cmake_force
@@ -83,10 +97,24 @@ CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/drive_cmd_vel.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.s
 
+CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/drive_until_rail_state.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/drive_until_rail_state.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/drive_until_rail_state.cpp > CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/drive_until_rail_state.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.s
+
 CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/for_each_rail.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/for_each_rail.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.i: cmake_force
@@ -97,10 +125,24 @@ CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/for_each_rail.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.s
 
+CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp > CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.s
+
 CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_rail_pose.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_rail_pose.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.i: cmake_force
@@ -114,7 +156,7 @@ CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.s: cmake_force
 CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/go_to_pose.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/go_to_pose.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.i: cmake_force
@@ -125,10 +167,38 @@ CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/go_to_pose.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.s
 
+CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp > CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s
+
+CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/load_resume_target.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/load_resume_target.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/load_resume_target.cpp > CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/load_resume_target.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.s
+
 CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/publish_rail_command.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/publish_rail_command.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.i: cmake_force
@@ -142,7 +212,7 @@ CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.s: cmake_force
 CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_approach.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_approach.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.i: cmake_force
@@ -153,178 +223,10 @@ CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_approach.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.s
 
-CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp > CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp > CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_state.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_state.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_state.cpp > CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_state.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp > CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_seconds.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_seconds.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_seconds.cpp > CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_seconds.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp > CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_battery_low.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp > CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_current_pose.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_current_pose.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_current_pose.cpp > CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_current_pose.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp > CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_rail_obstacle.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_rail_obstacle.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_rail_obstacle.cpp > CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/is_rail_obstacle.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_clear.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_clear.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_clear.cpp > CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_rail_clear.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.s
-
-CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
-CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp
-CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp
-
-CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp > CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.i
-
-CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/get_location_pose.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.s
-
 CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_enter.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_enter.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.i: cmake_force
@@ -338,7 +240,7 @@ CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.s: cmake_force
 CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
 CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_exit.cpp
 CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_exit.cpp
 
 CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.i: cmake_force
@@ -349,52 +251,150 @@ CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_exit.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.s
 
+CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_move_to_distance.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_move_to_distance.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_move_to_distance.cpp > CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/rail_move_to_distance.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.s
+
+CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp > CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/register_nodes.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.s
+
+CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp > CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/return_home_requested.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.s
+
+CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_rail_progress.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_rail_progress.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_rail_progress.cpp > CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/save_rail_progress.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.s
+
+CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp > CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/toggle_docking.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.s
+
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp > CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_charge.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.s
+
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o: CMakeFiles/theimc_bt_nodes.dir/flags.make
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o: /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o: CMakeFiles/theimc_bt_nodes.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff/theimc_robot/build/theimc_bt_nodes/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o -MF CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o.d -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o -c /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp
+
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp > CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.i
+
+CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff/theimc_robot/src/theimc_bt_nodes/src/wait_for_mission_trigger.cpp -o CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.s
+
 # Object files for target theimc_bt_nodes
 theimc_bt_nodes_OBJECTS = \
+"CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o" \
 "CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o" \
 "CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o" \
 "CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o" \
 "CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o" \
 "CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o" \
 "CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o" \
 "CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o" \
-"CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o"
+"CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o" \
+"CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o"
 
 # External object files for target theimc_bt_nodes
 theimc_bt_nodes_EXTERNAL_OBJECTS =
 
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/clear_resume_target.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/drive_cmd_vel.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/drive_until_rail_state.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/for_each_rail.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/get_rail_pose.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/go_to_pose.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/load_resume_target.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/publish_rail_command.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/rail_approach.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_state.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/wait_seconds.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/is_battery_low.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/save_current_pose.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/is_rail_obstacle.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/wait_for_rail_clear.cpp.o
-libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/get_location_pose.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/rail_enter.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/rail_exit.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/rail_move_to_distance.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/register_nodes.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/return_home_requested.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/save_rail_progress.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/toggle_docking.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/wait_for_charge.cpp.o
+libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/src/wait_for_mission_trigger.cpp.o
 libtheimc_bt_nodes.so: CMakeFiles/theimc_bt_nodes.dir/build.make
 libtheimc_bt_nodes.so: /opt/ros/humble/lib/libbehaviortree_cpp_v3.so
 libtheimc_bt_nodes.so: /home/jeff/theimc_robot/install/interfaces_pkg/lib/libinterfaces_pkg__rosidl_typesupport_fastrtps_c.so
@@ -409,6 +409,17 @@ libtheimc_bt_nodes.so: /opt/ros/humble/lib/libnav2_msgs__rosidl_typesupport_intr
 libtheimc_bt_nodes.so: /opt/ros/humble/lib/libnav2_msgs__rosidl_typesupport_introspection_cpp.so
 libtheimc_bt_nodes.so: /opt/ros/humble/lib/libnav2_msgs__rosidl_typesupport_cpp.so
 libtheimc_bt_nodes.so: /opt/ros/humble/lib/libnav2_msgs__rosidl_generator_py.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libsensor_msgs__rosidl_typesupport_fastrtps_c.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libsensor_msgs__rosidl_typesupport_fastrtps_cpp.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libsensor_msgs__rosidl_typesupport_introspection_c.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libsensor_msgs__rosidl_typesupport_introspection_cpp.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libsensor_msgs__rosidl_generator_py.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libstd_srvs__rosidl_typesupport_fastrtps_c.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libstd_srvs__rosidl_typesupport_introspection_c.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libstd_srvs__rosidl_typesupport_fastrtps_cpp.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libstd_srvs__rosidl_typesupport_introspection_cpp.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libstd_srvs__rosidl_typesupport_cpp.so
+libtheimc_bt_nodes.so: /opt/ros/humble/lib/libstd_srvs__rosidl_generator_py.so
 libtheimc_bt_nodes.so: /usr/lib/aarch64-linux-gnu/libyaml-cpp.so.0.7.0
 libtheimc_bt_nodes.so: /opt/ros/humble/lib/libnav2_behavior_tree.so
 libtheimc_bt_nodes.so: /opt/ros/humble/lib/libnav2_compute_path_to_pose_action_bt_node.so
