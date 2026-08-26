@@ -1,1 +1,0 @@
-/home/jeff/theimc_robot/build/interfaces_pkg/rosidl_typesupport_fastrtps_c/interfaces_pkg/msg/detail/detection__rosidl_typesupport_fastrtps_c.h

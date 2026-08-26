@@ -1,1 +1,0 @@
-/home/jeff/theimc_robot/build/interfaces_pkg/rosidl_generator_c/interfaces_pkg/msg/detail/motion_command__struct.h

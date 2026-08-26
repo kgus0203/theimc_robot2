@@ -1,1 +1,0 @@
-/home/jeff/theimc_robot/src/sllidar_ros2/launch/sllidar_a2m12_launch .py

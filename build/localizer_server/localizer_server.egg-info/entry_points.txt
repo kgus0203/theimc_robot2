@@ -1,3 +1,0 @@
-[console_scripts]
-global_localization = localizer_server.global_localization:main
-

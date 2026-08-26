@@ -1,1 +1,0 @@
-/home/jeff/theimc_robot/build/sllidar_ros2/ament_cmake_environment_hooks/local_setup.zsh

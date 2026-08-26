@@ -1,407 +1,159 @@
-#!/usr/bin/env python3
-
-import math
-
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import PoseStamped, TransformStamped
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from cv_bridge import CvBridge
 import cv2
 import numpy as np
-import rclpy
 import tf_transformations
-from cv_bridge import CvBridge
-from geometry_msgs.msg import PoseStamped, TransformStamped
-from rclpy.node import Node
-from rclpy.qos import (
-    QoSDurabilityPolicy,
-    QoSHistoryPolicy,
-    QoSProfile,
-    QoSReliabilityPolicy,
-)
-from sensor_msgs.msg import CameraInfo, Image
-from std_msgs.msg import Bool, Int32, String
 from tf2_ros import TransformBroadcaster
 
-
 class ArucoDetectorNode(Node):
-    """Robust ArUco detector for the rail robot docking test.
-
-    Key points:
-      * Reports whether image frames are actually arriving.
-      * Reports IDs that are visible even when they are not the configured target.
-      * Can automatically try common ArUco dictionaries when the configured
-        dictionary does not find the target.
-      * Uses CameraInfo when available and falls back to scaled D435-like
-        intrinsics when CameraInfo is absent.
-    """
-
-    COMMON_DICTIONARIES = [
-        'DICT_4X4_50',
-        'DICT_4X4_100',
-        'DICT_4X4_250',
-        'DICT_5X5_50',
-        'DICT_5X5_100',
-        'DICT_5X5_250',
-        'DICT_6X6_50',
-        'DICT_6X6_100',
-        'DICT_6X6_250',
-    ]
-
     def __init__(self):
         super().__init__('aruco_detector_node')
 
+        # --- 파라미터 선언 ---
         self.declare_parameter('image_topic', '/image_raw')
-        self.declare_parameter('camera_info_topic', '/camera_info')
         self.declare_parameter('pose_topic', '/aruco_pose')
-        self.declare_parameter('marker_size', 0.10)
-        # -1 means accept the first detected marker. Keep 0 as the normal
-        # docking target unless explicitly changed.
-        self.declare_parameter('marker_id_to_detect', 0)
-        self.declare_parameter('camera_frame_id', 'camera_color_optical_frame')
-        self.declare_parameter('dictionary_name', 'DICT_5X5_250')
-        self.declare_parameter('auto_dictionary_search', True)
-        self.declare_parameter('auto_search_every_n_frames', 5)
+        self.declare_parameter('marker_size', 0.10)  # 마커의 실제 물리적 크기 (단위: 미터, 10cm)
+        self.declare_parameter('marker_id_to_detect', 0)  # 충전 스테이션에 부착된 마커 ID
+        self.declare_parameter('camera_frame_id', 'camera_color_optical_frame') # 카메라 프레임
 
-        self.image_topic = str(self.get_parameter('image_topic').value)
-        self.camera_info_topic = str(self.get_parameter('camera_info_topic').value)
-        self.pose_topic = str(self.get_parameter('pose_topic').value)
-        self.marker_size = float(self.get_parameter('marker_size').value)
-        self.target_id = int(self.get_parameter('marker_id_to_detect').value)
-        self.camera_frame_id = str(self.get_parameter('camera_frame_id').value)
-        self.dictionary_name = str(self.get_parameter('dictionary_name').value)
-        self.auto_dictionary_search = bool(
-            self.get_parameter('auto_dictionary_search').value
-        )
-        self.auto_search_every_n_frames = max(
-            1, int(self.get_parameter('auto_search_every_n_frames').value)
-        )
+        self.image_topic = self.get_parameter('image_topic').value
+        self.pose_topic = self.get_parameter('pose_topic').value
+        self.marker_size = self.get_parameter('marker_size').value
+        self.target_id = self.get_parameter('marker_id_to_detect').value
+        self.camera_frame_id = self.get_parameter('camera_frame_id').value
 
+        # --- [필수] 카메라 캘리브레이션 파라미터 입력 ---
+        # RealSense D435 기본 해상도(640x480) 기준 예시 값입니다. 
+        self.camera_matrix = np.array([[530.0,   0.0, 320.0],
+                                       [  0.0, 530.0, 240.0],
+                                       [  0.0,   0.0,   1.0]], dtype=np.float32)
+        self.dist_coeffs = np.zeros((5, 1), dtype=np.float32)
+
+        # --- ROS 2 구성 ---
         self.bridge = CvBridge()
-        self.tf_broadcaster = TransformBroadcaster(self)
-
-        image_qos = QoSProfile(
+        
+        # image_publisher.py와 호환되도록 BEST_EFFORT QoS 프로필 적용
+        image_qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             history=QoSHistoryPolicy.KEEP_LAST,
             durability=QoSDurabilityPolicy.VOLATILE,
-            depth=2,
+            depth=1
         )
-
-        self.image_sub = self.create_subscription(
-            Image,
-            self.image_topic,
-            self.image_callback,
-            image_qos,
+        
+        self.subscription = self.create_subscription(
+            Image, 
+            self.image_topic, 
+            self.image_callback, 
+            image_qos_profile
         )
-        self.camera_info_sub = self.create_subscription(
-            CameraInfo,
-            self.camera_info_topic,
-            self.camera_info_callback,
-            image_qos,
-        )
-
         self.pose_pub = self.create_publisher(PoseStamped, self.pose_topic, 10)
-        self.detected_pub = self.create_publisher(Bool, '/aruco_detected', 10)
-        self.detected_id_pub = self.create_publisher(Int32, '/aruco_detected_id', 10)
-        self.status_pub = self.create_publisher(String, '/aruco_detector_status', 10)
+        
+        # TF 브로드캐스터 생성
+        self.tf_broadcaster = TransformBroadcaster(self)
 
-        self.aruco_params = self._make_detector_parameters()
-        self._dictionary_cache = {}
-        self.active_dictionary_name = self.dictionary_name
-        self._get_dictionary(self.active_dictionary_name)  # validate now
+        # ArUco 사전 정의 
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
+        self.aruco_params = cv2.aruco.DetectorParameters_create()
+        
+        # OpenCV 4.7.0 이상 대응 객체 생성
+        #self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
 
-        # Fallback intrinsics. They are rescaled to the actual image size.
-        self.camera_matrix = None
-        self.dist_coeffs = np.zeros((5, 1), dtype=np.float64)
-        self.have_camera_info = False
-
+        # 3D 마커 코너 좌표 정의 (마커 중심 기준)
         s = self.marker_size / 2.0
-        self.marker_3d_edges = np.array(
-            [
-                [-s,  s, 0.0],
-                [ s,  s, 0.0],
-                [ s, -s, 0.0],
-                [-s, -s, 0.0],
-            ],
-            dtype=np.float32,
-        )
+        self.marker_3d_edges = np.array([
+            [-s,  s, 0],  
+            [ s,  s, 0],  
+            [ s, -s, 0],  
+            [-s, -s, 0]   
+        ], dtype=np.float32)
 
-        self.frame_count = 0
-        self.last_image_log_ns = 0
-        self.last_no_target_log_ns = 0
-        self.last_detect_log_ns = 0
-
-        self._publish_status(
-            f'STARTED target_id={self.target_id} '
-            f'dict={self.dictionary_name} image={self.image_topic}'
-        )
-        self.get_logger().info(
-            '[ARUCO] started: image=%s pose=%s target_id=%d dict=%s auto_dict=%s',
-            self.image_topic,
-            self.pose_topic,
-            self.target_id,
-            self.dictionary_name,
-            str(self.auto_dictionary_search),
-        )
-
-    def _make_detector_parameters(self):
-        if hasattr(cv2.aruco, 'DetectorParameters'):
-            params = cv2.aruco.DetectorParameters()
-        else:
-            params = cv2.aruco.DetectorParameters_create()
-
-        # A little more permissive for a marker viewed from a few metres away.
-        if hasattr(params, 'minMarkerPerimeterRate'):
-            params.minMarkerPerimeterRate = 0.02
-        if hasattr(params, 'cornerRefinementMethod') and hasattr(
-            cv2.aruco, 'CORNER_REFINE_SUBPIX'
-        ):
-            params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
-        return params
-
-    def _get_dictionary(self, name):
-        if name in self._dictionary_cache:
-            return self._dictionary_cache[name]
-
-        if not hasattr(cv2.aruco, name):
-            raise RuntimeError(f'Unsupported ArUco dictionary: {name}')
-
-        dictionary_id = getattr(cv2.aruco, name)
-        dictionary = cv2.aruco.getPredefinedDictionary(dictionary_id)
-        self._dictionary_cache[name] = dictionary
-        return dictionary
-
-    def _publish_status(self, text):
-        msg = String()
-        msg.data = str(text)
-        self.status_pub.publish(msg)
-
-    def camera_info_callback(self, msg):
-        if len(msg.k) != 9:
-            return
-
-        k = np.array(msg.k, dtype=np.float64).reshape((3, 3))
-        if not np.isfinite(k).all() or k[0, 0] <= 0.0 or k[1, 1] <= 0.0:
-            return
-
-        self.camera_matrix = k
-        if msg.d:
-            self.dist_coeffs = np.array(msg.d, dtype=np.float64).reshape((-1, 1))
-        else:
-            self.dist_coeffs = np.zeros((5, 1), dtype=np.float64)
-
-        if not self.have_camera_info:
-            self.get_logger().info(
-                '[ARUCO] CameraInfo received: fx=%.1f fy=%.1f cx=%.1f cy=%.1f',
-                k[0, 0], k[1, 1], k[0, 2], k[1, 2],
-            )
-        self.have_camera_info = True
-
-    def _camera_matrix_for_image(self, width, height):
-        if self.have_camera_info and self.camera_matrix is not None:
-            return self.camera_matrix
-
-        # Original code assumed 640x480 with fx=fy=530. Scale the fallback
-        # instead of keeping the same matrix for every resolution.
-        sx = float(width) / 640.0
-        sy = float(height) / 480.0
-        return np.array(
-            [
-                [530.0 * sx, 0.0, width * 0.5],
-                [0.0, 530.0 * sy, height * 0.5],
-                [0.0, 0.0, 1.0],
-            ],
-            dtype=np.float64,
-        )
-
-    def _detect_with_dictionary(self, gray, dictionary_name):
-        dictionary = self._get_dictionary(dictionary_name)
-
-        # New and old OpenCV APIs are both supported.
-        if hasattr(cv2.aruco, 'ArucoDetector'):
-            detector = cv2.aruco.ArucoDetector(dictionary, self.aruco_params)
-            return detector.detectMarkers(gray)
-
-        return cv2.aruco.detectMarkers(
-            gray,
-            dictionary,
-            parameters=self.aruco_params,
-        )
-
-    def _pick_target_index(self, ids):
-        if ids is None or len(ids) == 0:
-            return None
-
-        flat = [int(v) for v in ids.flatten()]
-        if self.target_id < 0:
-            return 0
-
-        try:
-            return flat.index(self.target_id)
-        except ValueError:
-            return None
-
-    def _detect_target(self, gray):
-        # 1) Try the configured/current dictionary first on every frame.
-        corners, ids, rejected = self._detect_with_dictionary(
-            gray, self.active_dictionary_name
-        )
-        idx = self._pick_target_index(ids)
-        if idx is not None:
-            return self.active_dictionary_name, corners, ids, idx, rejected
-
-        # If something was detected but it is the wrong ID, make this visible.
-        if ids is not None and len(ids) > 0:
-            now_ns = self.get_clock().now().nanoseconds
-            if now_ns - self.last_no_target_log_ns > int(1.0e9):
-                self.last_no_target_log_ns = now_ns
-                visible = [int(v) for v in ids.flatten()]
-                self.get_logger().warning(
-                    '[ARUCO] marker(s) visible with %s: ids=%s, target_id=%d',
-                    self.active_dictionary_name,
-                    visible,
-                    self.target_id,
-                )
-
-        # 2) Periodically try common dictionaries. This avoids multiplying
-        # CPU load by N dictionaries on every image frame.
-        if (
-            not self.auto_dictionary_search
-            or self.frame_count % self.auto_search_every_n_frames != 0
-        ):
-            return None
-
-        for name in self.COMMON_DICTIONARIES:
-            if name == self.active_dictionary_name:
-                continue
-            try:
-                alt_corners, alt_ids, alt_rejected = self._detect_with_dictionary(
-                    gray, name
-                )
-            except Exception:
-                continue
-
-            alt_idx = self._pick_target_index(alt_ids)
-            if alt_idx is not None:
-                old = self.active_dictionary_name
-                self.active_dictionary_name = name
-                self.get_logger().warning(
-                    '[ARUCO] target found with dictionary %s (configured=%s). '
-                    'Switching active dictionary %s -> %s',
-                    name,
-                    self.dictionary_name,
-                    old,
-                    name,
-                )
-                self._publish_status(
-                    f'DICTIONARY_AUTO_SELECTED {name} target_id={self.target_id}'
-                )
-                return name, alt_corners, alt_ids, alt_idx, alt_rejected
-
-        return None
+        self.get_logger().info(f"ArucoDetectorNode started. Target ID: {self.target_id}")
 
     def image_callback(self, msg):
-        self.frame_count += 1
-
         try:
-            image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        except Exception as exc:
-            self.get_logger().error('[ARUCO] CvBridge error: %s', str(exc))
-            self._publish_status(f'CV_BRIDGE_ERROR {exc}')
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        except Exception as e:
+            self.get_logger().error(f"CvBridge Error: {e}")
             return
 
-        if image is None or image.size == 0:
-            return
-
-        height, width = image.shape[:2]
-        now_ns = self.get_clock().now().nanoseconds
-        if now_ns - self.last_image_log_ns > int(2.0e9):
-            self.last_image_log_ns = now_ns
-            self.get_logger().info(
-                '[ARUCO] image alive: %dx%d frames=%d active_dict=%s',
-                width,
-                height,
-                self.frame_count,
-                self.active_dictionary_name,
-            )
-
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        detection = self._detect_target(gray)
-
-        detected_msg = Bool()
-        detected_msg.data = detection is not None
-        self.detected_pub.publish(detected_msg)
-
-        if detection is None:
-            return
-
-        dictionary_name, corners, ids, target_index, _ = detection
-        marker_id = int(ids.flatten()[target_index])
-
-        camera_matrix = self._camera_matrix_for_image(width, height)
-        image_points = corners[target_index][0].astype(np.float32)
-
-        flags = getattr(cv2, 'SOLVEPNP_IPPE_SQUARE', cv2.SOLVEPNP_ITERATIVE)
-        success, rvec, tvec = cv2.solvePnP(
-            self.marker_3d_edges,
-            image_points,
-            camera_matrix,
-            self.dist_coeffs,
-            flags=flags,
+        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+        
+        # 마커 검출
+        corners, ids, rejected = cv2.aruco.detectMarkers(
+            gray, 
+            self.aruco_dict, 
+            parameters=self.aruco_params
         )
 
-        if not success:
-            self.get_logger().warning('[ARUCO] solvePnP failed for marker %d', marker_id)
-            return
+        if ids is not None:
+            for i, marker_id in enumerate(ids.flatten()):
+                if marker_id == self.target_id:
+                    # solvePnP를 이용한 3D Pose 추정
+                    success, rvec, tvec = cv2.solvePnP(
+                        self.marker_3d_edges, 
+                        corners[i][0], 
+                        self.camera_matrix, 
+                        self.dist_coeffs
+                    )
 
-        tvec = np.asarray(tvec, dtype=np.float64).reshape(3)
-        if not np.isfinite(tvec).all() or tvec[2] <= 0.0:
-            self.get_logger().warning('[ARUCO] invalid pose for marker %d: %s', marker_id, tvec)
-            return
+                    if success:
+                        x, y, z = tvec[0][0], tvec[1][0], tvec[2][0]
 
-        rmat, _ = cv2.Rodrigues(rvec)
-        transform_matrix = np.eye(4)
-        transform_matrix[:3, :3] = rmat
-        quat = tf_transformations.quaternion_from_matrix(transform_matrix)
+                        # rvec을 쿼터니언 회전 정보로 변환
+                        rmat, _ = cv2.Rodrigues(rvec)
+                        transform_matrix = np.eye(4)
+                        transform_matrix[:3, :3] = rmat
+                        quat = tf_transformations.quaternion_from_matrix(transform_matrix)
 
-        pose_msg = PoseStamped()
-        pose_msg.header.stamp = msg.header.stamp
-        pose_msg.header.frame_id = (
-            msg.header.frame_id if msg.header.frame_id else self.camera_frame_id
-        )
-        pose_msg.pose.position.x = float(tvec[0])
-        pose_msg.pose.position.y = float(tvec[1])
-        pose_msg.pose.position.z = float(tvec[2])
-        pose_msg.pose.orientation.x = float(quat[0])
-        pose_msg.pose.orientation.y = float(quat[1])
-        pose_msg.pose.orientation.z = float(quat[2])
-        pose_msg.pose.orientation.w = float(quat[3])
-        self.pose_pub.publish(pose_msg)
+                        # 1. PoseStamped 메시지 퍼블리시
+                        pose_msg = PoseStamped()
+                        # msg.header가 유효하지 않을 경우를 대비해 파라미터 프레임 ID 사용
+                        pose_msg.header.stamp = msg.header.stamp
+                        pose_msg.header.frame_id = msg.header.frame_id if msg.header.frame_id else self.camera_frame_id
+                        
+                        pose_msg.pose.position.x = float(x)
+                        pose_msg.pose.position.y = float(y)
+                        pose_msg.pose.position.z = float(z)
+                        pose_msg.pose.orientation.x = quat[0]
+                        pose_msg.pose.orientation.y = quat[1]
+                        pose_msg.pose.orientation.z = quat[2]
+                        pose_msg.pose.orientation.w = quat[3]
 
-        id_msg = Int32()
-        id_msg.data = marker_id
-        self.detected_id_pub.publish(id_msg)
+                        self.pose_pub.publish(pose_msg)
 
-        tf_msg = TransformStamped()
-        tf_msg.header = pose_msg.header
-        tf_msg.child_frame_id = f'aruco_marker_{marker_id}'
-        tf_msg.transform.translation.x = float(tvec[0])
-        tf_msg.transform.translation.y = float(tvec[1])
-        tf_msg.transform.translation.z = float(tvec[2])
-        tf_msg.transform.rotation = pose_msg.pose.orientation
-        self.tf_broadcaster.sendTransform(tf_msg)
+                        # 2. TF (TransformStamped) 브로드캐스트 (rqt_tf_tree 및 rviz용)
+                        t = TransformStamped()
+                        t.header.stamp = msg.header.stamp
+                        t.header.frame_id = pose_msg.header.frame_id
+                        t.child_frame_id = f'aruco_marker_{marker_id}'
 
-        if now_ns - self.last_detect_log_ns > int(0.5e9):
-            self.last_detect_log_ns = now_ns
-            self.get_logger().info(
-                '[ARUCO] DETECTED id=%d dict=%s x=%.3f y=%.3f z=%.3f',
-                marker_id,
-                dictionary_name,
-                float(tvec[0]),
-                float(tvec[1]),
-                float(tvec[2]),
-            )
-            self._publish_status(
-                f'DETECTED id={marker_id} dict={dictionary_name} '
-                f'x={tvec[0]:.3f} y={tvec[1]:.3f} z={tvec[2]:.3f}'
-            )
+                        t.transform.translation.x = float(x)
+                        t.transform.translation.y = float(y)
+                        t.transform.translation.z = float(z)
+                        t.transform.rotation.x = quat[0]
+                        t.transform.rotation.y = quat[1]
+                        t.transform.rotation.z = quat[2]
+                        t.transform.rotation.w = quat[3]
 
+                        self.tf_broadcaster.sendTransform(t)
+
+                        # 디버그 로그
+                        # self.get_logger().info(
+                        #     f"Marker {marker_id} X:{x:.3f}, Y:{y:.3f}, Z:{z:.3f}",
+                        #     throttle_duration_sec=0.5
+                        # )
+
+                        # 카메라 피드 시각화
+                        cv2.drawFrameAxes(cv_image, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.05)
+                        cv2.aruco.drawDetectedMarkers(cv_image, corners)
+                        
+        # 필요 시 디버그용 이미지 윈도우 활성화
+        # cv2.imshow("ArUco Debug", cv_image)
+        # cv2.waitKey(1)
 
 def main(args=None):
     rclpy.init(args=args)
@@ -412,9 +164,7 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

@@ -1,1 +1,0 @@
-/home/jeff/theimc_robot/build/interfaces_pkg/rosidl_typesupport_fastrtps_cpp/interfaces_pkg/msg/detail/mask__rosidl_typesupport_fastrtps_cpp.hpp

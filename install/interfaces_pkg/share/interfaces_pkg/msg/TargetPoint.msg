@@ -1,1 +1,0 @@
-/home/jeff/theimc_robot/src/interfaces_pkg/msg/TargetPoint.msg

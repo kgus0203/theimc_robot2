@@ -27,6 +27,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PathPlanningResult.msg"
 
   "action/RailApproach.action"
+  "action/StartInspection.action"
   
   DEPENDENCIES std_msgs geometry_msgs
 )

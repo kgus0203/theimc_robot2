@@ -1,0 +1,13 @@
+string region
+int32 device_number
+int32 bed_id
+int32 hole_id
+---
+bool success
+string inspection_id
+string message
+---
+string status
+string current_viewpoint
+int32 completed_captures
+int32 total_captures

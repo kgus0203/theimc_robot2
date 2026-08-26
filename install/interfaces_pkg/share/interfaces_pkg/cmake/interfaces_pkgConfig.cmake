@@ -1,1 +1,0 @@
-/home/jeff/theimc_robot/build/interfaces_pkg/ament_cmake_core/interfaces_pkgConfig.cmake

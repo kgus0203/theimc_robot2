@@ -1,2 +1,15 @@
 *.db
 src/theimc_bringup/rtabmap/*.db
+
+build/
+install/
+log/
+
+__pycache__/
+*.pyc
+
+.vscode/
+.idea/
+
+*.bag
+*.db
