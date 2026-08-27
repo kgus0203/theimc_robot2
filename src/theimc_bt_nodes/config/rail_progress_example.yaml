@@ -1,7 +1,0 @@
-rails:
-  "1":
-    progress_m: 1.0
-    completed: false
-  "2":
-    progress_m: 0.0
-    completed: false

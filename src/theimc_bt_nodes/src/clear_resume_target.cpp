@@ -19,8 +19,8 @@ BT::PortsList ClearResumeTarget::providedPorts()
   return {
     BT::InputPort<std::string>(
       "progress_file",
-      "",
-      "Empty = ~/.ros/theimc_rail_progress.yaml")
+      "/home/jeff/theimc_robot/src/theimc_bt_nodes/config/rail_progress.yaml",
+      "Rail progress YAML path")
   };
 }
 

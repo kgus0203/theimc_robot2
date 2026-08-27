@@ -16,9 +16,27 @@ inspection_manager:
     set_angles_service: "/set_angles"
     get_angles_service: "/get_angles"
     get_coords_service: "/get_coords"
-    camera_width: 640
-    camera_height: 480
-    camera_fps: 30
+    camera_color_width: 1280
+    camera_color_height: 720
+    camera_color_fps: 15
+    camera_depth_width: 640
+    camera_depth_height: 480
+    camera_depth_fps: 15
     jpeg_quality: 95
     camera_warmup_frames: 15
     camera_serial: "234322070133"
+    stream_enabled: true
+    preview_width: 320
+    preview_height: 180
+    preview_fps: 8
+    preview_bitrate_kbps: 350
+    # 비워두면 MEDIAMTX_RTSP_URL 환경변수 또는 기본 주소를 사용합니다.
+    mediamtx_rtsp_url: ""
+    rtsp_pkt_size: 1400
+    camera_frame_timeout_sec: 3.0
+    camera_failure_threshold: 3
+    preview_frame_timeout_sec: 3.0
+    watchdog_interval_sec: 0.5
+    max_preview_restarts: 5
+    max_camera_restarts: 3
+    restart_window_sec: 60.0

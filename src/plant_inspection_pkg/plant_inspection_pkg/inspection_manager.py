@@ -68,24 +68,78 @@ class InspectionManager(Node):
         self.declare_parameter("set_angles_service", "/set_angles")
         self.declare_parameter("get_angles_service", "/get_angles")
         self.declare_parameter("get_coords_service", "/get_coords")
-        self.declare_parameter("camera_width", 640)
-        self.declare_parameter("camera_height", 480)
-        self.declare_parameter("camera_fps", 30)
+        self.declare_parameter("camera_color_width", 1280)
+        self.declare_parameter("camera_color_height", 720)
+        self.declare_parameter("camera_color_fps", 15)
+        self.declare_parameter("camera_depth_width", 640)
+        self.declare_parameter("camera_depth_height", 480)
+        self.declare_parameter("camera_depth_fps", 15)
         self.declare_parameter("jpeg_quality", 95)
         self.declare_parameter("camera_warmup_frames", 15)
         self.declare_parameter("camera_serial", "234322070133")
+        self.declare_parameter("stream_enabled", True)
+        self.declare_parameter("preview_width", 320)
+        self.declare_parameter("preview_height", 180)
+        self.declare_parameter("preview_fps", 8)
+        self.declare_parameter("preview_bitrate_kbps", 350)
+        self.declare_parameter("mediamtx_rtsp_url", "")
+        self.declare_parameter("rtsp_pkt_size", 1400)
+        self.declare_parameter("camera_frame_timeout_sec", 3.0)
+        self.declare_parameter("camera_failure_threshold", 3)
+        self.declare_parameter("preview_frame_timeout_sec", 3.0)
+        self.declare_parameter("watchdog_interval_sec", 0.5)
+        self.declare_parameter("max_preview_restarts", 5)
+        self.declare_parameter("max_camera_restarts", 3)
+        self.declare_parameter("restart_window_sec", 60.0)
 
         upload_url = self.get_parameter("upload_url").value
         pending_dir = self.get_parameter("pending_dir").value
         dry_run = bool(self.get_parameter("dry_run").value)
+        mediamtx_rtsp_url = str(
+            self.get_parameter("mediamtx_rtsp_url").value
+        ).strip()
 
         self.camera = RealSenseD435iCamera(
-            width=int(self.get_parameter("camera_width").value),
-            height=int(self.get_parameter("camera_height").value),
-            fps=int(self.get_parameter("camera_fps").value),
+            color_width=int(self.get_parameter("camera_color_width").value),
+            color_height=int(self.get_parameter("camera_color_height").value),
+            color_fps=int(self.get_parameter("camera_color_fps").value),
+            depth_width=int(self.get_parameter("camera_depth_width").value),
+            depth_height=int(self.get_parameter("camera_depth_height").value),
+            depth_fps=int(self.get_parameter("camera_depth_fps").value),
             jpeg_quality=int(self.get_parameter("jpeg_quality").value),
             warmup_frames=int(self.get_parameter("camera_warmup_frames").value),
             serial_number=str(self.get_parameter("camera_serial").value),
+            stream_enabled=bool(self.get_parameter("stream_enabled").value),
+            preview_width=int(self.get_parameter("preview_width").value),
+            preview_height=int(self.get_parameter("preview_height").value),
+            preview_fps=int(self.get_parameter("preview_fps").value),
+            preview_bitrate_kbps=int(
+                self.get_parameter("preview_bitrate_kbps").value
+            ),
+            rtsp_url=mediamtx_rtsp_url,
+            rtsp_pkt_size=int(self.get_parameter("rtsp_pkt_size").value),
+            camera_frame_timeout_sec=float(
+                self.get_parameter("camera_frame_timeout_sec").value
+            ),
+            camera_failure_threshold=int(
+                self.get_parameter("camera_failure_threshold").value
+            ),
+            preview_frame_timeout_sec=float(
+                self.get_parameter("preview_frame_timeout_sec").value
+            ),
+            watchdog_interval_sec=float(
+                self.get_parameter("watchdog_interval_sec").value
+            ),
+            max_preview_restarts=int(
+                self.get_parameter("max_preview_restarts").value
+            ),
+            max_camera_restarts=int(
+                self.get_parameter("max_camera_restarts").value
+            ),
+            restart_window_sec=float(
+                self.get_parameter("restart_window_sec").value
+            ),
+            logger=self.get_logger(),
         )
         self.environment_client = RandomEnvironmentClient()
         self.pending_queue = PendingQueue(pending_dir)
@@ -109,6 +163,12 @@ class InspectionManager(Node):
             "/arm_command_result",
             10,
         )
+        self.camera_health_pub = self.create_publisher(
+            String,
+            "/camera_manager/health",
+            10,
+        )
+        self.create_timer(1.0, self._publish_camera_health)
         self.arm_command_sub = self.create_subscription(
             String,
             "/arm_command",
@@ -129,6 +189,11 @@ class InspectionManager(Node):
             self.create_timer(0.5, self._run_once)
 
         self.get_logger().info("Ready for inspection goals on /start_inspection")
+
+    def _publish_camera_health(self) -> None:
+        self.camera_health_pub.publish(
+            String(data=json.dumps(self.camera.get_health(), ensure_ascii=False))
+        )
 
     def _handle_start_inspection_goal(self, goal_request):
         with self._busy_lock:

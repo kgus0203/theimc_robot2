@@ -1,0 +1,37 @@
+rails:
+  "1":
+    progress_m: 1.0
+    completed: false
+  "2":
+    progress_m: 0.0
+    completed: false
+  "3":
+    progress_m: 0.0
+    completed: false
+  "4":
+    progress_m: 0.0
+    completed: false
+  "5":
+    progress_m: 0.0
+    completed: false
+  "6":
+    progress_m: 0.0
+    completed: false
+  "7":
+    progress_m: 0.0
+    completed: false
+  "8":
+    progress_m: 0.0
+    completed: false
+  "9":
+    progress_m: 0.0
+    completed: false
+  "10":
+    progress_m: 0.0
+    completed: false
+  "11":
+    progress_m: 0.0
+    completed: false
+  "12":
+    progress_m: 0.0
+    completed: false

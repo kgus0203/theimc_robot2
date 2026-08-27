@@ -48,9 +48,8 @@ BT::PortsList SaveRailProgress::providedPorts()
     BT::InputPort<int>("rail_id"),
     BT::InputPort<std::string>(
       "progress_file",
-      "",
-      "Empty = ~/.ros/theimc_rail_progress.yaml"),
-    // 3개 인자로 수정 (이름, 기본값, 설명)
+      "/home/jeff/theimc_robot/src/theimc_bt_nodes/config/rail_progress.yaml",
+      "Rail progress YAML path"),
     BT::InputPort<bool>("completed", false, "Whether the mission is completed"),
     BT::InputPort<bool>(
       "force",
@@ -60,8 +59,10 @@ BT::PortsList SaveRailProgress::providedPorts()
       "mark_resume",
       false,
       "true marks this rail as interrupted/resume target"),
-    // 3개 인자로 수정 (이름, 기본값, 설명)
-    BT::InputPort<double>("odom_stale_sec", 0.5, "Odom stale timeout in seconds"),
+    BT::InputPort<double>(
+      "odom_stale_sec",
+      0.5,
+      "Odom stale timeout in seconds"),
     BT::OutputPort<double>("saved_progress_m")
   };
 }
@@ -142,7 +143,6 @@ BT::NodeStatus SaveRailProgress::tick()
   RailProgressRecord new_record;
   new_record.completed = completed;
 
-  // Manual interruption must use force=true so EXACT stop position is saved.
   new_record.progress_m =
     force ? current : std::max(old_record.progress_m, current);
 
@@ -158,10 +158,11 @@ BT::NodeStatus SaveRailProgress::tick()
 
   RCLCPP_INFO(
     node_->get_logger(),
-    "[SaveRailProgress] rail=%d progress=%.3f m resume=%s",
+    "[SaveRailProgress] rail=%d progress=%.3f m resume=%s file=%s",
     rail_id,
     new_record.progress_m,
-    mark_resume ? "true" : "false");
+    mark_resume ? "true" : "false",
+    path.string().c_str());
 
   return BT::NodeStatus::SUCCESS;
 }

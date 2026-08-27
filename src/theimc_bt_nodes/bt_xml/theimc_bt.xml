@@ -127,7 +127,9 @@
           <!-- ================================================= -->
           <!-- Priority 2: MANUAL RETURN HOME                    -->
           <!-- ================================================= -->
-          <ReturnHomeRequested return_mode="{return_mode}"/>
+          <ReturnHomeRequested
+            current_mode="{mission_return_mode}"
+            return_mode="{return_mode}"/>
 
 
           <!-- ================================================= -->
@@ -392,9 +394,9 @@
             value="REVERSE_HOME"/>
 
           <DriveCmdVel
-            linear_x="-0.1"
+            linear_x="-0.2"
             angular_z="0.0"
-            seconds="3.0"/>
+            seconds="5.0"/>
 
         </Sequence>
       </ForceFailure>
