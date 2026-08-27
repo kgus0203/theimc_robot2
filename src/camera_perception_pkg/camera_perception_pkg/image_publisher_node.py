@@ -42,9 +42,8 @@ CAMERA_FPS = 15
 
 FRAME_ID = 'camera_color_optical_frame'
 
-# 여러 대 연결했을 때 특정 카메라 serial 지정용
-# 비워두면 첫 번째 RealSense 사용
-REALSENSE_SERIAL = ''
+# 이 노드가 사용할 RealSense 카메라를 serial로 고정한다.
+REALSENSE_SERIAL = '244622071272'
 
 # RealSense frame wait timeout
 # 기존 1000ms는 너무 길어서 callback이 오래 막힘
@@ -98,9 +97,14 @@ class ImagePublisherNode(Node):
         self.frame_height = self.get_parameter('frame_height').get_parameter_value().integer_value
         self.camera_fps = self.get_parameter('camera_fps').get_parameter_value().integer_value
         self.frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
-        self.realsense_serial = self.get_parameter('realsense_serial').get_parameter_value().string_value
+        self.realsense_serial = (
+            self.get_parameter('realsense_serial').get_parameter_value().string_value
+        )
         self.realsense_timeout_ms = self.get_parameter('realsense_timeout_ms').get_parameter_value().integer_value
-        self.max_realsense_fail_count = self.get_parameter('max_realsense_fail_count').get_parameter_value().integer_value
+        self.max_realsense_fail_count = (
+            self.get_parameter('max_realsense_fail_count')
+            .get_parameter_value().integer_value
+        )
 
         # 카메라 영상은 BEST_EFFORT / depth=1 권장
         # 프레임 하나 놓쳐도 최신 프레임을 받는 게 중요함

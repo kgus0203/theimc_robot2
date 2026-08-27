@@ -1,12 +1,16 @@
 import json
+import threading
 import traceback
+from datetime import date
 from typing import Dict, List
 
 import rclpy
 from interfaces_pkg.action import StartInspection
 from rclpy.action import ActionServer, GoalResponse
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from std_msgs.msg import String
 
 from plant_inspection_pkg.environment_client import RandomEnvironmentClient
 from plant_inspection_pkg.models import (
@@ -23,11 +27,22 @@ from plant_inspection_pkg.robot_client import RobotArmClient
 from plant_inspection_pkg.uploader import UploadError, Uploader
 
 
-DEFAULT_WAYPOINTS: Dict[str, List[float]] = {
-    "upper": [0.0, -35.0, -45.0, 0.0, 65.0, 0.0],
-    "middle": [0.0, -20.0, -55.0, 0.0, 75.0, 0.0],
-    "lower": [0.0, -5.0, -65.0, 0.0, 85.0, 0.0],
+CUCUMBER_DEFAULT_WAYPOINTS: Dict[str, List[float]] = {
+    "home": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "upper": [-90.0, -7.0, -28.0, -6.0, 3.0, 2.0],
+    "middle": [-95.0, 13.0, -105.0, 51.0, 7.0, -2.0],
+    "lower": [-99.0, 10.0, -135.0, 77.0, 10.0, -5.0],
 }
+
+STRAWBERRY_DEFAULT_WAYPOINTS: Dict[str, List[float]] = {
+    '''
+    여기는 높이X 다각도 촬영 이건 나중에 넣을 거임
+    '''
+}
+
+# 생육 단계는 정식일로부터 지난 날짜를 기준으로 결정한다.
+TRANSPLANT_DATE = date(2026, 8, 14)  # 이건 실제 오이 정식일
+# TRANSPLANT_DATE = date(2025, 8, 14) # 60일 이상이면 제일 상단만 찍는 test용
 
 
 class InspectionManager(Node):
@@ -41,7 +56,6 @@ class InspectionManager(Node):
         self.declare_parameter("device_number", 1)
         self.declare_parameter("bed_id", 1)
         self.declare_parameter("hole_id", 1)
-        self.declare_parameter("viewpoints", "upper,middle,lower")
         self.declare_parameter("waypoints_json", "")
         self.declare_parameter("move_speed", 30)
         self.declare_parameter("settle_seconds", 1.0)
@@ -88,6 +102,20 @@ class InspectionManager(Node):
         )
 
         self._busy = False
+        self._busy_lock = threading.Lock()
+        self._arm_command_callback_group = ReentrantCallbackGroup()
+        self.arm_command_result_pub = self.create_publisher(
+            String,
+            "/arm_command_result",
+            10,
+        )
+        self.arm_command_sub = self.create_subscription(
+            String,
+            "/arm_command",
+            self._handle_arm_command,
+            10,
+            callback_group=self._arm_command_callback_group,
+        )
         self.action_server = ActionServer(
             self,
             StartInspection,
@@ -103,13 +131,16 @@ class InspectionManager(Node):
         self.get_logger().info("Ready for inspection goals on /start_inspection")
 
     def _handle_start_inspection_goal(self, goal_request):
-        if self._busy:
-            self.get_logger().warning("Rejecting inspection goal because one is running.")
-            return GoalResponse.REJECT
+        with self._busy_lock:
+            if self._busy:
+                self.get_logger().warning(
+                    "Rejecting inspection goal because an arm operation is running."
+                )
+                return GoalResponse.REJECT
+            self._busy = True
         return GoalResponse.ACCEPT
 
     def _execute_start_inspection(self, goal_handle):
-        self._busy = True
         result = StartInspection.Result()
         goal = goal_handle.request
         location = Location(
@@ -138,9 +169,103 @@ class InspectionManager(Node):
             result.inspection_id = ""
             result.message = str(exc)
         finally:
-            self._busy = False
+            with self._busy_lock:
+                self._busy = False
 
         return result
+
+    def _handle_arm_command(self, msg: String) -> None:
+        command_id = ""
+        command = ""
+        try:
+            payload = json.loads(msg.data)
+            if not isinstance(payload, dict):
+                raise ValueError("arm command must be a JSON object")
+
+            command_id = str(payload.get("command_id") or "")
+            command = str(payload.get("command") or "").upper()
+            params = payload.get("params") or {}
+            if not command_id:
+                raise ValueError("command_id is required")
+            if command != "MOVE_PRESET":
+                raise ValueError(f"unsupported arm command: {command}")
+            if not isinstance(params, dict):
+                raise ValueError("params must be a JSON object")
+
+            target = str(params.get("target") or "").lower()
+            waypoints = self._waypoints()
+            if target not in waypoints:
+                raise ValueError(f"unknown arm preset: {target}")
+
+            with self._busy_lock:
+                if self._busy:
+                    self.get_logger().warning(
+                        f"Rejecting MOVE_PRESET {target}: arm is busy"
+                    )
+                    self._publish_arm_command_result(
+                        command_id,
+                        command,
+                        "REJECTED",
+                        "ARM_BUSY",
+                        target,
+                    )
+                    return
+                self._busy = True
+
+            try:
+                self.get_logger().info(f"Moving arm to preset: {target}")
+                self.robot.move_to_angles(
+                    waypoints[target],
+                    speed=int(self.get_parameter("move_speed").value),
+                    settle_seconds=float(self.get_parameter("settle_seconds").value),
+                )
+                self._publish_arm_command_result(
+                    command_id,
+                    command,
+                    "SUCCEEDED",
+                    f"arm reached preset: {target}",
+                    target,
+                )
+            except Exception as exc:
+                self.get_logger().error(f"MOVE_PRESET {target} failed: {exc}")
+                self._publish_arm_command_result(
+                    command_id,
+                    command,
+                    "FAILED",
+                    str(exc),
+                    target,
+                )
+            finally:
+                with self._busy_lock:
+                    self._busy = False
+        except Exception as exc:
+            self.get_logger().warning(f"Invalid /arm_command: {exc}")
+            self._publish_arm_command_result(
+                command_id,
+                command or "MOVE_PRESET",
+                "REJECTED",
+                str(exc),
+            )
+
+    def _publish_arm_command_result(
+        self,
+        command_id: str,
+        command: str,
+        status: str,
+        message: str,
+        target: str = "",
+    ) -> None:
+        payload = {
+            "command_id": command_id,
+            "command": command,
+            "status": status,
+            "message": message,
+        }
+        if target:
+            payload["target"] = target
+        self.arm_command_result_pub.publish(
+            String(data=json.dumps(payload, ensure_ascii=False))
+        )
 
     def _run_once(self):
         if self._started:
@@ -279,18 +404,38 @@ class InspectionManager(Node):
                 return
 
     def _viewpoints(self) -> List[str]:
-        raw = str(self.get_parameter("viewpoints").value)
-        viewpoints = [item.strip() for item in raw.split(",") if item.strip()]
+        growth_days = (date.today() - TRANSPLANT_DATE).days
+        if growth_days < 0:
+            raise RuntimeError(
+                f"Inspection date is before transplant date: {TRANSPLANT_DATE.isoformat()}"
+            )
+
+        # 표의 low/middle/high를 기존 waypoint 이름인
+        # lower/middle/upper에 대응시킨다.
+        if growth_days <= 20:
+            viewpoints = ["lower"]
+        elif growth_days <= 40:
+            viewpoints = ["lower", "middle"]
+        elif growth_days <= 60:
+            viewpoints = ["middle", "upper"]
+        else:
+            viewpoints = ["upper"]
+
         waypoints = self._waypoints()
         missing = [item for item in viewpoints if item not in waypoints]
         if missing:
             raise ValueError(f"No waypoint configured for viewpoint(s): {missing}")
+
+        self.get_logger().info(
+            f"Growth day {growth_days} from {TRANSPLANT_DATE.isoformat()}: "
+            f"viewpoints={viewpoints}"
+        )
         return viewpoints
 
     def _waypoints(self) -> Dict[str, List[float]]:
         raw = str(self.get_parameter("waypoints_json").value).strip()
         if not raw:
-            return DEFAULT_WAYPOINTS
+            return CUCUMBER_DEFAULT_WAYPOINTS
         parsed = json.loads(raw)
         return {key: [float(value) for value in values] for key, values in parsed.items()}
 

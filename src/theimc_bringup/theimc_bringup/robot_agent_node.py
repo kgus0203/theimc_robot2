@@ -143,6 +143,8 @@ class RobotAgent(Node):
             Path, str(self.get_parameter("plan_topic").value), self._path_cb, 10)
         self.create_subscription(BatteryState, "/battery_state", self._battery_cb, 10)
         self.create_subscription(JointState, "/joint_states", self._joints_cb, 10)
+        self.create_subscription(
+            String, "/arm_command_result", self._arm_command_result_cb, 10)
 
         self.nav_client = ActionClient(self, NavigateToPose, "/navigate_to_pose")
         self.rail_client = ActionClient(self, RailApproach, "/rail_approach")
@@ -246,6 +248,28 @@ class RobotAgent(Node):
             name: float(value) for name, value in zip(msg.name, msg.position)
             if math.isfinite(value)
         }
+
+    def _arm_command_result_cb(self, msg):
+        try:
+            payload = json.loads(msg.data)
+            command_id = str(payload.get("command_id") or "")
+            command = str(payload.get("command") or "MOVE_PRESET")
+            status = str(payload.get("status") or "FAILED").upper()
+            message = str(payload.get("message") or "")
+            if not command_id:
+                raise ValueError("command_id is required")
+        except Exception as exc:
+            self.get_logger().warning(f"Invalid /arm_command_result: {exc}")
+            return
+
+        self.arm_state = "IDLE" if status == "SUCCEEDED" else status
+        self._result(
+            TOPIC_ARM_CMD_RESULT,
+            command_id,
+            command,
+            status,
+            message,
+        )
 
     # Command routing ----------------------------------------------------
     def _process_commands(self):
@@ -564,7 +588,7 @@ class RobotAgent(Node):
             self.arm_command_pub.publish(
                 String(data=json.dumps(payload, ensure_ascii=False)))
             self.arm_state = "MOVING" if command == "MOVE_PRESET" else "IDLE"
-            self._result(TOPIC_ARM_CMD_RESULT, cid, command, "SUCCEEDED")
+            self._result(TOPIC_ARM_CMD_RESULT, cid, command, "ACCEPTED")
         elif command == "CAPTURE_TRIGGER":
             if not self.capture_client.service_is_ready():
                 self.capture_client.wait_for_service(timeout_sec=0.2)
