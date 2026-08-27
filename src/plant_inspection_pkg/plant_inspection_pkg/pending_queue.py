@@ -34,11 +34,19 @@ class PendingQueue:
             for kind, filename in capture.files.items():
                 local_filename = Path(filename).name
                 path = target / local_filename
+                content_types = {
+                    "rgb": "image/jpeg",
+                    "depth": "image/png",
+                    "camera_info": "application/json",
+                }
                 files.append(
                     FilePayload(
                         field_name=f"{capture.viewpoint_id}_{kind}",
                         filename=local_filename,
-                        content_type="image/jpeg" if kind == "rgb" else "image/png",
+                        content_type=content_types.get(
+                            kind,
+                            "application/octet-stream",
+                        ),
                         data=path.read_bytes(),
                     )
                 )

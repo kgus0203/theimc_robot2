@@ -1,3 +1,4 @@
+import json
 import os
 import queue
 import shutil
@@ -95,7 +96,7 @@ class RealSenseD435iCamera:
         self.logger = logger
 
         self.pipeline: Optional[object] = None
-        self.align: Optional[object] = None
+        self._camera_info = None
         self._stop_event = threading.Event()
         self._pipeline_lock = threading.Lock()
         self._recovery_lock = threading.Lock()
@@ -159,6 +160,7 @@ class RealSenseD435iCamera:
             "viewpoint_id": viewpoint_id,
             "color": bundle[0],
             "depth": bundle[1],
+            "camera_info": bundle[3],
             "done": threading.Event(),
             "result": None,
             "error": None,
@@ -219,7 +221,7 @@ class RealSenseD435iCamera:
 
         self._stop_ffmpeg()
         self.pipeline = None
-        self.align = None
+        self._camera_info = None
 
     def _start(self) -> None:
         self._start_pipeline()
@@ -281,7 +283,7 @@ class RealSenseD435iCamera:
 
         pipeline = self.rs.pipeline()
         try:
-            pipeline.start(config)
+            profile = pipeline.start(config)
         except Exception:
             try:
                 pipeline.stop()
@@ -289,16 +291,76 @@ class RealSenseD435iCamera:
                 pass
             raise
 
+        camera_info = self._build_camera_info(profile)
         with self._pipeline_lock:
             self.pipeline = pipeline
-            self.align = self.rs.align(self.rs.stream.color)
+            self._camera_info = camera_info
             self._pipeline_generation += 1
+
+    def _build_camera_info(self, profile):
+        color_profile = profile.get_stream(
+            self.rs.stream.color
+        ).as_video_stream_profile()
+        depth_profile = profile.get_stream(
+            self.rs.stream.depth
+        ).as_video_stream_profile()
+        color_intrinsics = color_profile.get_intrinsics()
+        depth_intrinsics = depth_profile.get_intrinsics()
+        depth_to_color = depth_profile.get_extrinsics_to(color_profile)
+        color_to_depth = color_profile.get_extrinsics_to(depth_profile)
+        depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()
+
+        return {
+            "schema_version": 1,
+            "device_serial": self.serial_number,
+            "frames_aligned": False,
+            "color": {
+                "encoding": "bgr8",
+                "intrinsics": self._intrinsics_to_dict(color_intrinsics),
+            },
+            "depth": {
+                "encoding": "16UC1",
+                "unit": "raw_uint16",
+                "scale_meters_per_unit": float(depth_scale),
+                "intrinsics": self._intrinsics_to_dict(depth_intrinsics),
+            },
+            "extrinsics": {
+                "convention": (
+                    "target_point_m = rotation(row-major) * source_point_m "
+                    "+ translation_meters"
+                ),
+                "depth_to_color": self._extrinsics_to_dict(depth_to_color),
+                "color_to_depth": self._extrinsics_to_dict(color_to_depth),
+            },
+        }
+
+    @staticmethod
+    def _intrinsics_to_dict(intrinsics):
+        return {
+            "width": int(intrinsics.width),
+            "height": int(intrinsics.height),
+            "fx": float(intrinsics.fx),
+            "fy": float(intrinsics.fy),
+            "ppx": float(intrinsics.ppx),
+            "ppy": float(intrinsics.ppy),
+            "distortion_model": str(intrinsics.model),
+            "coefficients": [float(value) for value in intrinsics.coeffs],
+        }
+
+    @staticmethod
+    def _extrinsics_to_dict(extrinsics):
+        return {
+            "rotation": [float(value) for value in extrinsics.rotation],
+            "translation_meters": [
+                float(value) for value in extrinsics.translation
+            ],
+        }
 
     def _stop_pipeline(self) -> None:
         with self._pipeline_lock:
             pipeline = self.pipeline
             self.pipeline = None
-            self.align = None
+            self._camera_info = None
         if pipeline is not None:
             try:
                 pipeline.stop()
@@ -325,9 +387,9 @@ class RealSenseD435iCamera:
             try:
                 with self._pipeline_lock:
                     pipeline = self.pipeline
-                    align = self.align
+                    camera_info = self._camera_info
                     generation = self._pipeline_generation
-                if pipeline is None or align is None:
+                if pipeline is None or camera_info is None:
                     time.sleep(0.05)
                     continue
                 if generation != observed_generation:
@@ -335,9 +397,8 @@ class RealSenseD435iCamera:
                     observed_generation = generation
 
                 frames = pipeline.wait_for_frames(timeout_ms=1000)
-                aligned = align.process(frames)
-                color_frame = aligned.get_color_frame()
-                depth_frame = aligned.get_depth_frame()
+                color_frame = frames.get_color_frame()
+                depth_frame = frames.get_depth_frame()
                 if not color_frame or not depth_frame:
                     continue
 
@@ -349,7 +410,7 @@ class RealSenseD435iCamera:
 
                 now = time.monotonic()
                 with self._latest_condition:
-                    self._latest_bundle = (color, depth, now)
+                    self._latest_bundle = (color, depth, now, camera_info)
                     self._frame_error = None
                     self._latest_condition.notify_all()
                 self.last_rgb_frame_time = now
@@ -596,6 +657,12 @@ class RealSenseD435iCamera:
                 if not ok:
                     raise RuntimeError("Failed to encode RealSense depth frame as PNG.")
 
+                camera_info_buffer = json.dumps(
+                    request["camera_info"],
+                    ensure_ascii=False,
+                    indent=2,
+                ).encode("utf-8")
+
                 inspection_id = request["inspection_id"]
                 viewpoint_id = request["viewpoint_id"]
                 prefix = f"{inspection_id}_{viewpoint_id}"
@@ -611,6 +678,12 @@ class RealSenseD435iCamera:
                         filename=f"{prefix}_depth.png",
                         content_type="image/png",
                         data=depth_buffer.tobytes(),
+                    ),
+                    FilePayload(
+                        field_name=f"{viewpoint_id}_camera_info",
+                        filename=f"{prefix}_camera_info.json",
+                        content_type="application/json",
+                        data=camera_info_buffer,
                     ),
                 )
             except Exception as exc:

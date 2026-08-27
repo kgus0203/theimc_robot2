@@ -393,11 +393,11 @@ class InspectionManager(Node):
             )
             arm_pose = self.robot.get_arm_pose(fallback_angles=waypoint)
             camera_pose = self.robot.get_camera_pose()
-            rgb_payload, depth_payload = self.camera.capture(
+            rgb_payload, depth_payload, camera_info_payload = self.camera.capture(
                 inspection_id=inspection_id,
                 viewpoint_id=viewpoint_id,
             )
-            files.extend([rgb_payload, depth_payload])
+            files.extend([rgb_payload, depth_payload, camera_info_payload])
 
             inspection.captures.append(
                 Capture(
@@ -408,8 +408,11 @@ class InspectionManager(Node):
                     files={
                         "rgb": f"/data/{inspection_id}/{rgb_payload.filename}",
                         "depth": f"/data/{inspection_id}/{depth_payload.filename}",
+                        "camera_info": (
+                            f"/data/{inspection_id}/{camera_info_payload.filename}"
+                        ),
                     },
-                    aligned_depth=True,
+                    aligned_depth=False,
                 )
             )
             self._publish_feedback(
