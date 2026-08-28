@@ -162,7 +162,7 @@ BT::NodeStatus SaveRailProgress::tick()
     rail_id,
     new_record.progress_m,
     mark_resume ? "true" : "false",
-    path.string().c_str());
+    path.c_str());
 
   return BT::NodeStatus::SUCCESS;
 }

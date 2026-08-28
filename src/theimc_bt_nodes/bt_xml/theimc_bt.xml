@@ -30,16 +30,32 @@
           <!-- ================================================= -->
           <!-- Priority 1: LOW BATTERY                           -->
           <!-- ================================================= -->
-          <SequenceWithMemory name="LowBatteryRecovery">
+          <SequenceStar name="LowBatteryRecovery">
 
             <!--
-              SequenceWithMemory가 중요하다.
+              SequenceStar(메모리 시퀀스)가 중요하다.
               저전력 복구가 시작된 뒤에는 충전 90%가 될 때까지
               IsBatteryLow를 매 tick 다시 검사하지 않고 현재 복구 단계부터 계속한다.
             -->
             <IsBatteryLow
               threshold="20.0"
               recovery_threshold="90.0"/>
+
+            <!--
+              IMPORTANT:
+              ReactiveFallback은 상위 우선순위 child를 먼저 tick한 뒤
+              기존 하위 미션(ForEachRail/RailMove)을 halt한다.
+
+              따라서 여기서 바로 BACK을 보내면,
+              직후 RailMoveToDistance::onHalted()의 STOP이 BACK을 덮어쓸 수 있다.
+
+              0.2초 RUNNING을 먼저 반환하여 하위 미션을 완전히 halt/STOP시킨 뒤
+              다음 tick에서 Save -> BACK -> RailExit 순서로 진행한다.
+            -->
+            <DriveCmdVel
+              linear_x="0.0"
+              angular_z="0.0"
+              seconds="0.2"/>
 
             <Switch3
               variable="{mission_return_mode}"
@@ -49,6 +65,9 @@
 
               <!-- 레일 위: 정확한 m 저장 -> 안전 탈출 -->
               <Sequence name="LowBatteryLeaveRail">
+
+                <!-- halt 완료 후 STOP 상태를 다시 확정 -->
+                <PublishRailCommand command="STOP"/>
 
                 <SaveRailProgress
                   rail_id="{rail_id}"
@@ -121,7 +140,7 @@
               <AlwaysSuccess/>
             </Inverter>
 
-          </SequenceWithMemory>
+          </SequenceStar>
 
 
           <!-- ================================================= -->
@@ -466,37 +485,58 @@
 
 
       <!-- ===================================================== -->
-      <!-- TEST WORKING ROUTINE                                  -->
-      <!-- 누적 rail/odom 기준: 1.0m -> 2.0m -> 3.0m             -->
-      <!-- 작업 실패 시 return_mode=EXIT_RAIL_HOME 상태이므로    -->
-      <!-- 상위 Switch3가 Save -> Exit -> HOME 복구 수행          -->
+      <!-- TEST WORKING ROUTINE + LOW BATTERY PREEMPT             -->
       <!-- ===================================================== -->
+      <!--
+        ReactiveSequence은 RailMove가 RUNNING인 동안에도 매 tick
+        IsBatteryLow를 다시 검사한다.
 
-      <RailMoveToDistance
-        target_m="1.0"
-        tolerance_m="0.05"
-        timeout_sec="60.0"
-        odom_stale_sec="0.5"
-        reached_m="{work_reached_1_m}"/>
+        battery < 20%:
+          Inverter(IsBatteryLow) => FAILURE
+          -> 실행 중 RailMoveToDistance HALT
+          -> RailMoveToDistance::onHalted() => STOP
+          -> RailRoutine FAILURE
+          -> 최상위 LowBatteryRecovery가 현재 m 저장 후 탈출
+      -->
+      <ReactiveSequence name="LowBatteryGuardedRailWork">
 
-      <RailMoveToDistance
-        target_m="2.0"
-        tolerance_m="0.05"
-        timeout_sec="60.0"
-        odom_stale_sec="0.5"
-        reached_m="{work_reached_2_m}"/>
+        <Inverter>
+          <IsBatteryLow
+            threshold="20.0"
+            recovery_threshold="90.0"/>
+        </Inverter>
 
-      <RailMoveToDistance
-        target_m="3.0"
-        tolerance_m="0.05"
-        timeout_sec="60.0"
-        odom_stale_sec="0.5"
-        reached_m="{work_reached_3_m}"/>
+        <Sequence name="RailWorkAndExit">
 
-      <!-- 모든 WORKING 목표 성공 후 공통 탈출 -->
-      <SubTreePlus
-        ID="ExitRailAndReverse"
-        __autoremap="1"/>
+          <RailMoveToDistance
+            target_m="1.0"
+            tolerance_m="0.05"
+            timeout_sec="60.0"
+            odom_stale_sec="0.5"
+            reached_m="{work_reached_1_m}"/>
+
+          <RailMoveToDistance
+            target_m="2.0"
+            tolerance_m="0.05"
+            timeout_sec="60.0"
+            odom_stale_sec="0.5"
+            reached_m="{work_reached_2_m}"/>
+
+          <RailMoveToDistance
+            target_m="3.0"
+            tolerance_m="0.05"
+            timeout_sec="60.0"
+            odom_stale_sec="0.5"
+            reached_m="{work_reached_3_m}"/>
+
+          <!-- 모든 WORKING 목표 성공 후 공통 탈출 -->
+          <SubTreePlus
+            ID="ExitRailAndReverse"
+            __autoremap="1"/>
+
+        </Sequence>
+
+      </ReactiveSequence>
 
       <!-- 정상 탈출 완료 후 DIRECT 상태로 복구 -->
       <SetBlackboard
@@ -569,45 +609,63 @@
         value="EXIT_RAIL_HOME"/>
 
 
-      <!-- 먼저 정확한 중단 m까지 복귀 -->
-      <RailMoveToDistance
-        target_m="{resume_progress_m}"
-        tolerance_m="0.05"
-        timeout_sec="90.0"
-        odom_stale_sec="0.5"
-        reached_m="{resume_reached_m}"/>
+      <!--
+        Resume 이동 중에도 저배터리가 다시 발생하면 즉시 STOP.
+        중단 위치 복귀 단계와 남은 작업 모두 같은 guard 아래에 둔다.
+      -->
+      <ReactiveSequence name="LowBatteryGuardedResumeWork">
+
+        <Inverter>
+          <IsBatteryLow
+            threshold="20.0"
+            recovery_threshold="90.0"/>
+        </Inverter>
+
+        <Sequence name="ResumeMoveWorkAndExit">
+
+          <!-- 먼저 정확한 중단 m까지 복귀 -->
+          <RailMoveToDistance
+            target_m="{resume_progress_m}"
+            tolerance_m="0.05"
+            timeout_sec="90.0"
+            odom_stale_sec="0.5"
+            reached_m="{resume_reached_m}"/>
 
 
-      <!-- 저장 거리 기준으로 이미 끝난 WORK 지점은 건너뜀 -->
-      <Switch3
-        variable="{resume_stage}"
-        case_1="WORK_1_TO_3"
-        case_2="WORK_2_TO_3"
-        case_3="WORK_3_ONLY">
+          <!-- 저장 거리 기준으로 이미 끝난 WORK 지점은 건너뜀 -->
+          <Switch3
+            variable="{resume_stage}"
+            case_1="WORK_1_TO_3"
+            case_2="WORK_2_TO_3"
+            case_3="WORK_3_ONLY">
 
-        <Sequence name="ResumeWork1To3">
-          <RailMoveToDistance target_m="1.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_1_m}"/>
-          <RailMoveToDistance target_m="2.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_2_m}"/>
-          <RailMoveToDistance target_m="3.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_3_m}"/>
+            <Sequence name="ResumeWork1To3">
+              <RailMoveToDistance target_m="1.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_1_m}"/>
+              <RailMoveToDistance target_m="2.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_2_m}"/>
+              <RailMoveToDistance target_m="3.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_3_m}"/>
+            </Sequence>
+
+            <Sequence name="ResumeWork2To3">
+              <RailMoveToDistance target_m="2.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_2_m}"/>
+              <RailMoveToDistance target_m="3.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_3_m}"/>
+            </Sequence>
+
+            <RailMoveToDistance target_m="3.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_3_m}"/>
+
+            <!-- EXIT_ONLY: 3m 작업까지 이미 끝난 경우 -->
+            <AlwaysSuccess/>
+
+          </Switch3>
+
+
+          <!-- 남은 WORKING 완료 후 공통 탈출 -->
+          <SubTreePlus
+            ID="ExitRailAndReverse"
+            __autoremap="1"/>
+
         </Sequence>
 
-        <Sequence name="ResumeWork2To3">
-          <RailMoveToDistance target_m="2.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_2_m}"/>
-          <RailMoveToDistance target_m="3.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_3_m}"/>
-        </Sequence>
-
-        <RailMoveToDistance target_m="3.0" tolerance_m="0.05" timeout_sec="60.0" odom_stale_sec="0.5" reached_m="{resume_work_reached_3_m}"/>
-
-        <!-- EXIT_ONLY: 3m 작업까지 이미 끝난 경우 -->
-        <AlwaysSuccess/>
-
-      </Switch3>
-
-
-      <!-- 남은 WORKING 완료 후 공통 탈출 -->
-      <SubTreePlus
-        ID="ExitRailAndReverse"
-        __autoremap="1"/>
+      </ReactiveSequence>
 
       <!-- 정상 탈출 완료 후 DIRECT -->
       <SetBlackboard
@@ -636,7 +694,7 @@
       <RailExit
         exit_tof_mm="140.0"
         out_rail_tof_mm="160.0"
-        timeout_sec="20.0"
+        timeout_sec="30.0"
         tof_stale_sec="0.5"
         exit_confirm_samples="2"
         out_rail_confirm_samples="3"/>

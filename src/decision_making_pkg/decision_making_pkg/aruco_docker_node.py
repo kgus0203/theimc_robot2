@@ -3,6 +3,12 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Twist
 from std_srvs.srv import SetBool
 from std_msgs.msg import Bool, String
+from rclpy.qos import (
+    QoSProfile,
+    QoSReliabilityPolicy,
+    QoSHistoryPolicy,
+    QoSDurabilityPolicy,
+)
 import math
 
 class ArucoDockerNode(Node):
@@ -19,7 +25,7 @@ class ArucoDockerNode(Node):
         # --- [2] 제어 허용 오차 ---
         self.tol_z = 0.01    # 거리 오차 1cm 허용
         self.tol_x = 0.01    # 좌우 오차 1cm 허용
-        self.tol_yaw = 0.02  # 각도 오차 약 3도 허용 (라디안)
+        self.tol_yaw = 0.04  # 각도 오차 약 3도 허용 (라디안)
         
         # --- [3] P 제어기 파라미터 ---
         self.k_linear = 0.4
@@ -78,11 +84,28 @@ class ArucoDockerNode(Node):
             10
         )
 
+        # ArUco detector는 docking 중에만 image 처리를 수행.
+        detector_enable_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            depth=1
+        )
+        self.detector_enable_pub = self.create_publisher(
+            Bool,
+            '/aruco_detector_enable',
+            detector_enable_qos
+        )
+
         # --- [5] 마커 소실 / 탐색 회전 타이머 ---
         self.last_pose_time = self.get_clock().now()
         self.watchdog_timer = self.create_timer(0.5, self.check_timeout)
 
-        self.get_logger().info("Aruco Docker Node Started! (Status: Standby)")
+        self.publish_detector_enable(False)
+
+        self.get_logger().info(
+            "Aruco Docker Node Started! (Status: Standby / Detector: OFF)"
+        )
         self.publish_docking_status('STANDBY', completed=False)
 
     def publish_docking_status(self, status, completed=False):
@@ -93,6 +116,15 @@ class ArucoDockerNode(Node):
         complete_msg = Bool()
         complete_msg.data = bool(completed)
         self.complete_pub.publish(complete_msg)
+
+    def publish_detector_enable(self, enable):
+        msg = Bool()
+        msg.data = bool(enable)
+        self.detector_enable_pub.publish(msg)
+
+        self.get_logger().info(
+            f"[DOCKING] ArUco detector = {'ON' if enable else 'OFF'}"
+        )
 
     # 쿼터니언(x,y,z,w)을 오일러 각도(roll, pitch, yaw)로 변환
     def euler_from_quaternion(self, x, y, z, w):
@@ -105,6 +137,9 @@ class ArucoDockerNode(Node):
         self.is_docking_active = request.data
 
         if self.is_docking_active:
+            # BT <ToggleDocking enable="true"/> 시 detector ON
+            self.publish_detector_enable(True)
+
             self.last_pose_time = self.get_clock().now()
             self.is_searching_marker = False
             self.search_start_time = None
@@ -115,6 +150,7 @@ class ArucoDockerNode(Node):
         else:
             self.is_searching_marker = False
             self.search_start_time = None
+            self.publish_detector_enable(False)
 
             self.get_logger().info(
                 "⏸️ 도킹 모드가 비활성화되었습니다. 로봇을 정지합니다."
@@ -168,6 +204,7 @@ class ArucoDockerNode(Node):
         self.is_searching_marker = False
         self.search_start_time = None
         self.is_docking_active = False
+        self.publish_detector_enable(False)
 
         self.get_logger().warn(
             "❌ 한 바퀴 탐색했지만 ArUco 마커를 찾지 못했습니다. 정지합니다."
@@ -187,12 +224,12 @@ class ArucoDockerNode(Node):
             (now - self.last_pose_log_time).nanoseconds / 1e9 >= 1.0
         ):
             self.last_pose_log_time = now
-            self.get_logger().info(
-                '✅ /aruco_pose 수신: x=%.3f y=%.3f z=%.3f',
-                msg.pose.position.x,
-                msg.pose.position.y,
-                msg.pose.position.z,
-            )
+            #self.get_logger().info(
+            #    f'✅ /aruco_pose 수신: '
+            #    f'x={msg.pose.position.x:.3f} '
+            #    f'y={msg.pose.position.y:.3f} '
+            #    f'z={msg.pose.position.z:.3f}'
+            #)
 
         # Marker found during search: immediately leave search mode.
         if self.is_searching_marker:
@@ -224,6 +261,7 @@ class ArucoDockerNode(Node):
             self.is_docking_active = False
             self.is_searching_marker = False
             self.search_start_time = None
+            self.publish_detector_enable(False)
             self.publish_docking_status('COMPLETED', completed=True)
             return
             
@@ -272,6 +310,7 @@ def main(args=None):
         if rclpy.ok():
             try:
                 node.cmd_pub.publish(Twist())
+                node.publish_detector_enable(False)
             except Exception:
                 pass
     finally:

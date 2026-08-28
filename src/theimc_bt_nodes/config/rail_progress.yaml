@@ -1,37 +1,40 @@
 rails:
-  "1":
-    progress_m: 1.0
+  1:
+    progress_m: 1.3443663985395
     completed: false
-  "2":
+  2:
+    progress_m: 0.42299044807550007
+    completed: false
+  3:
     progress_m: 0.0
     completed: false
-  "3":
+  4:
     progress_m: 0.0
     completed: false
-  "4":
+  5:
     progress_m: 0.0
     completed: false
-  "5":
+  6:
     progress_m: 0.0
     completed: false
-  "6":
+  7:
     progress_m: 0.0
     completed: false
-  "7":
+  8:
     progress_m: 0.0
     completed: false
-  "8":
+  9:
     progress_m: 0.0
     completed: false
-  "9":
+  10:
     progress_m: 0.0
     completed: false
-  "10":
+  11:
     progress_m: 0.0
     completed: false
-  "11":
+  12:
     progress_m: 0.0
     completed: false
-  "12":
-    progress_m: 0.0
-    completed: false
+resume:
+  pending: true
+  rail_id: 2

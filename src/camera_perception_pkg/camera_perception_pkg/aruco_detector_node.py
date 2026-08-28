@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import PoseStamped, TransformStamped
+from std_msgs.msg import Bool
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from cv_bridge import CvBridge
 import cv2
@@ -37,19 +38,33 @@ class ArucoDetectorNode(Node):
         self.bridge = CvBridge()
         
         # image_publisher.py와 호환되도록 BEST_EFFORT QoS 프로필 적용
-        image_qos_profile = QoSProfile(
+        self.image_qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             history=QoSHistoryPolicy.KEEP_LAST,
             durability=QoSDurabilityPolicy.VOLATILE,
             depth=1
         )
-        
-        self.subscription = self.create_subscription(
-            Image, 
-            self.image_topic, 
-            self.image_callback, 
-            image_qos_profile
+
+        # 평소에는 /image_raw을 구독하지 않음.
+        # BT의 ToggleDocking(true) -> aruco_docker_node ->
+        # /aruco_detector_enable=true일 때만 subscription 생성.
+        self.subscription = None
+        self.detector_enabled = False
+
+        enable_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            depth=1
         )
+
+        self.enable_subscription = self.create_subscription(
+            Bool,
+            '/aruco_detector_enable',
+            self.enable_callback,
+            enable_qos
+        )
+
         self.pose_pub = self.create_publisher(PoseStamped, self.pose_topic, 10)
         
         # TF 브로드캐스터 생성
@@ -71,9 +86,51 @@ class ArucoDetectorNode(Node):
             [-s, -s, 0]   
         ], dtype=np.float32)
 
-        self.get_logger().info(f"ArucoDetectorNode started. Target ID: {self.target_id}")
+        self.get_logger().info(
+            f"ArucoDetectorNode started IDLE. Target ID: {self.target_id}. "
+            "/image_raw is OFF until docking starts."
+        )
+
+    def enable_callback(self, msg):
+        if bool(msg.data):
+            self.enable_detector()
+        else:
+            self.disable_detector()
+
+    def enable_detector(self):
+        if self.subscription is None:
+            self.subscription = self.create_subscription(
+                Image,
+                self.image_topic,
+                self.image_callback,
+                self.image_qos_profile
+            )
+
+        self.detector_enabled = True
+        self.get_logger().info(
+            f"[ARUCO] ENABLED -> subscribed to {self.image_topic}"
+        )
+
+    def disable_detector(self):
+        self.detector_enabled = False
+
+        if self.subscription is not None:
+            try:
+                self.destroy_subscription(self.subscription)
+            except Exception as e:
+                self.get_logger().warning(
+                    f"[ARUCO] destroy_subscription failed: {e}"
+                )
+            self.subscription = None
+
+        self.get_logger().info(
+            "[ARUCO] DISABLED -> /image_raw subscription removed"
+        )
 
     def image_callback(self, msg):
+        if not self.detector_enabled:
+            return
+
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         except Exception as e:
@@ -163,8 +220,15 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        try:
+            node.disable_detector()
+        except Exception:
+            pass
+
         node.destroy_node()
-        rclpy.shutdown()
+
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
