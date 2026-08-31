@@ -66,8 +66,14 @@ private:
   double target_m_{0.0};
   double tolerance_m_{0.05};
   double timeout_sec_{0.0};
+  double obstacle_wait_timeout_sec_{0.0};
   double odom_stale_sec_{0.5};
   rclcpp::Time start_time_;
+
+  // Obstacle waiting must not consume the normal movement timeout.
+  bool obstacle_waiting_{false};
+  rclcpp::Time obstacle_wait_start_;
+  double accumulated_obstacle_wait_sec_{0.0};
 
   std::string last_command_;
 };

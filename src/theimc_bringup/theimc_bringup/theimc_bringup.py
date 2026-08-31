@@ -84,6 +84,12 @@ class BringUp(Node):
         self.rail_odom_distance = 0.0
         self.rail_odom_last_time = None
 
+        # Rail end safety limit.
+        # BringUp owns the HARD forward limit so the rail motor can never
+        # continue past the configured rail end even if BT keeps requesting FORWARD.
+        self.rail_max_distance_m = 20.0
+        self.rail_end_reached = False
+
         # Rail state is now decided by ROS2 BT, not STM32.
         self.rail_state = 'OUT_RAIL'
         self.is_on_rail = False
@@ -197,6 +203,14 @@ class BringUp(Node):
             '/rail_obstacle_rear',
             10,
         )
+        self.pub_rail_end_reached = self.create_publisher(
+            Bool,
+            '/rail_end_reached',
+            10,
+        )
+
+        # Publish initial rail-end state.
+        self.publish_rail_end_reached(False)
 
         # 20 Hz serial receive/update loop
         self.create_timer(0.05, self.update_robot)
@@ -224,6 +238,32 @@ class BringUp(Node):
         msg.data = str(command).strip().upper()
         self.pub_rail_command_state.publish(msg)
 
+    def publish_rail_end_reached(self, reached):
+        msg = Bool()
+        msg.data = bool(reached)
+        self.pub_rail_end_reached.publish(msg)
+
+    def set_rail_end_reached(self, reached):
+        reached = bool(reached)
+
+        if reached == self.rail_end_reached:
+            return
+
+        self.rail_end_reached = reached
+        self.publish_rail_end_reached(reached)
+
+        if reached:
+            self.get_logger().warning(
+                f'[RAIL LIMIT] Rail end reached at '
+                f'{self.rail_odom_distance:.3f} m '
+                f'(limit={self.rail_max_distance_m:.3f} m). '
+                'FORWARD is now blocked.'
+            )
+        else:
+            self.get_logger().info(
+                '[RAIL LIMIT] Rail end cleared. FORWARD allowed again.'
+            )
+
     def cb_cmd_vel_msg(self, msg):
         vx = 0.0 if abs(msg.linear.x) < 0.01 else msg.linear.x
         wz = 0.0 if abs(msg.angular.z) < 0.01 else msg.angular.z
@@ -249,6 +289,19 @@ class BringUp(Node):
         if requested in ('FORWARD', 'BACK'):
             self.last_rail_motion_direction = requested
 
+            # HARD rail-end limit: FORWARD is forbidden at/after rail end.
+            # BACK remains allowed so the robot can leave the end position.
+            if requested == 'FORWARD' and self.rail_end_reached:
+                self.get_logger().warning(
+                    f'[RAIL LIMIT] Blocked direct FORWARD command at '
+                    f'{self.rail_odom_distance:.3f} m '
+                    f'(limit={self.rail_max_distance_m:.3f} m).'
+                )
+                self.send_rail_velocity(0.0)
+                self.publish_rail_command_state('STOP')
+                self.requested_rail_command = 'FORWARD'
+                return
+
             if self._obstacle_for_direction(requested):
                 self.get_logger().warning(
                     f'Blocked rail velocity command [{requested}] due to obstacle.'
@@ -273,6 +326,19 @@ class BringUp(Node):
 
         if command in ('FORWARD', 'BACK'):
             self.last_rail_motion_direction = command
+
+            # HARD rail-end limit: BT/GUI FORWARD cannot pass the rail end.
+            # BACK remains allowed.
+            if command == 'FORWARD' and self.rail_end_reached:
+                self.get_logger().warning(
+                    f'[RAIL LIMIT] Cannot execute [FORWARD]: '
+                    f'rail end reached at {self.rail_odom_distance:.3f} m '
+                    f'(limit={self.rail_max_distance_m:.3f} m).'
+                )
+                self._write_serial_line('STOP')
+                self.publish_rail_command_state('STOP')
+                self.requested_rail_command = 'FORWARD'
+                return
 
             if self._obstacle_for_direction(command):
                 self.get_logger().warning(
@@ -304,10 +370,28 @@ class BringUp(Node):
             self.get_logger().warning(f'Unknown rail state: {rail_state}')
             return
 
+        previous_state = self.rail_state
+
+        # OUT_RAIL is a hard reset boundary for one rail ride.
+        # Do this BEFORE the "same state" early-return so rail-end warning
+        # can never stay latched if OUT_RAIL is published again.
+        if rail_state == 'OUT_RAIL':
+            self.rail_state = 'OUT_RAIL'
+            self.is_on_rail = False
+
+            # Reset per-ride odometry and ALWAYS publish rail_end=false.
+            self.reset_rail_odometry(
+                publish=True,
+                force_end_clear_publish=True,
+            )
+
+            if previous_state != 'OUT_RAIL':
+                self.get_logger().info('Rail state => [OUT_RAIL]')
+            return
+
         if rail_state == self.rail_state:
             return
 
-        previous_state = self.rail_state
         self.rail_state = rail_state
 
         # Main-wheel odometry should be frozen while the robot is physically
@@ -318,11 +402,6 @@ class BringUp(Node):
             'WORKING',
             'EXITING',
         )
-
-        # /rail/odom is a per-ride coordinate. It is cleared only when the
-        # robot has completely left the rail.
-        if rail_state == 'OUT_RAIL' and previous_state != 'OUT_RAIL':
-            self.reset_rail_odometry(publish=True)
 
         self.get_logger().info(f'Rail state => [{rail_state}]')
 
@@ -550,6 +629,39 @@ class BringUp(Node):
             if rail_odom_active and dt > 0.0:
                 self.rail_odom_distance += measured_rail_velocity * dt
 
+        # HARD rail-end safety.
+        #
+        # Direction-aware boundary handling prevents TRUE/FALSE chatter at
+        # exactly 20.000 m:
+        #   FORWARD reaches >= 20.0 m  -> END_REACHED = true + STOP
+        #   BACK returns to <= 20.0 m  -> END_REACHED = false immediately
+        backing_away_from_end = (
+            self.requested_rail_command == 'BACK' or
+            measured_rail_velocity < -0.01
+        )
+
+        if (
+            self.rail_end_reached and
+            backing_away_from_end and
+            self.rail_odom_distance <= self.rail_max_distance_m
+        ):
+            self.set_rail_end_reached(False)
+
+        elif (
+            rail_odom_active and
+            not self.rail_end_reached and
+            self.rail_odom_distance >= self.rail_max_distance_m
+        ):
+            self.set_rail_end_reached(True)
+
+        # While latched at/over the end, FORWARD is always forced to STOP.
+        if (
+            self.rail_end_reached and
+            self.requested_rail_command == 'FORWARD'
+        ):
+            self._write_serial_line('STOP')
+            self.publish_rail_command_state('STOP')
+
         # Always refresh the timestamp. Otherwise time spent OUT_RAIL/ENTERING
         # would be integrated as one large jump when ON_RAIL begins.
         self.rail_odom_last_time = timestamp_now
@@ -606,9 +718,28 @@ class BringUp(Node):
 
         self.pub_rail_odom.publish(msg)
 
-    def reset_rail_odometry(self, publish=False):
+    def reset_rail_odometry(
+        self,
+        publish=False,
+        force_end_clear_publish=False,
+    ):
         self.rail_odom_distance = 0.0
         self.rail_odom_last_time = self.get_clock().now()
+
+        # Clear the internal latch first.
+        was_end_reached = self.rail_end_reached
+        self.rail_end_reached = False
+
+        # Always resynchronize the GUI/status topic on OUT_RAIL.
+        # This avoids a stale END REACHED display even if a previous false
+        # message was missed.
+        if force_end_clear_publish or was_end_reached:
+            self.publish_rail_end_reached(False)
+
+        if was_end_reached:
+            self.get_logger().info(
+                '[RAIL LIMIT] OUT_RAIL -> rail end cleared.'
+            )
 
         if publish:
             self.publish_rail_odometry(

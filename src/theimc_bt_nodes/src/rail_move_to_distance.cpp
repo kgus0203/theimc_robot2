@@ -1,5 +1,6 @@
 #include "theimc_bt_nodes/rail_move_to_distance.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <stdexcept>
@@ -80,7 +81,12 @@ BT::PortsList RailMoveToDistance::providedPorts()
     BT::InputPort<double>(
       "timeout_sec",
       0.0,
-      "Move timeout. 0 means no timeout"),
+      "Move timeout excluding obstacle wait time. 0 means no timeout"),
+
+    BT::InputPort<double>(
+      "obstacle_wait_timeout_sec",
+      0.0,
+      "Maximum continuous obstacle wait. 0 means wait indefinitely"),
 
     BT::InputPort<double>(
       "odom_stale_sec",
@@ -201,12 +207,14 @@ BT::NodeStatus RailMoveToDistance::onStart()
 
   getInput("tolerance_m", tolerance_m_);
   getInput("timeout_sec", timeout_sec_);
+  getInput("obstacle_wait_timeout_sec", obstacle_wait_timeout_sec_);
   getInput("odom_stale_sec", odom_stale_sec_);
 
   if (
     target_m_ < 0.0 ||
     tolerance_m_ <= 0.0 ||
     timeout_sec_ < 0.0 ||
+    obstacle_wait_timeout_sec_ < 0.0 ||
     odom_stale_sec_ <= 0.0)
   {
     RCLCPP_ERROR(
@@ -218,6 +226,8 @@ BT::NodeStatus RailMoveToDistance::onStart()
   }
 
   start_time_ = node_->now();
+  obstacle_waiting_ = false;
+  accumulated_obstacle_wait_sec_ = 0.0;
   last_command_.clear();
 
   publishTargetStarted();
@@ -235,15 +245,89 @@ BT::NodeStatus RailMoveToDistance::onRunning()
 {
   callback_group_executor_.spin_some();
 
+  const rclcpp::Time now = node_->now();
+
+  bool obstacle_now = false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    obstacle_now = obstacle_;
+  }
+
+  // --------------------------------------------------------------
+  // Obstacle handling
+  // --------------------------------------------------------------
+  // While an obstacle is present:
+  //   1) STOP the rail motor,
+  //   2) keep this BT node RUNNING,
+  //   3) do NOT consume timeout_sec,
+  //   4) resume the same target automatically when the obstacle clears.
+  if (obstacle_now) {
+    if (!obstacle_waiting_) {
+      obstacle_waiting_ = true;
+      obstacle_wait_start_ = now;
+
+      stop();
+
+      RCLCPP_WARN(
+        node_->get_logger(),
+        "[RailMoveToDistance] Obstacle detected -> STOP and WAIT "
+        "(movement timeout paused)");
+    } else {
+      stop();
+    }
+
+    if (
+      obstacle_wait_timeout_sec_ > 0.0 &&
+      (now - obstacle_wait_start_).seconds() >= obstacle_wait_timeout_sec_)
+    {
+      stop();
+
+      RCLCPP_ERROR(
+        node_->get_logger(),
+        "[RailMoveToDistance] Obstacle wait timeout after %.1f sec",
+        obstacle_wait_timeout_sec_);
+
+      return BT::NodeStatus::FAILURE;
+    }
+
+    return BT::NodeStatus::RUNNING;
+  }
+
+  // Transition WAIT_OBSTACLE -> MOVING.
+  if (obstacle_waiting_) {
+    const double waited_sec =
+      std::max(0.0, (now - obstacle_wait_start_).seconds());
+
+    accumulated_obstacle_wait_sec_ += waited_sec;
+    obstacle_waiting_ = false;
+
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "[RailMoveToDistance] Obstacle cleared after %.2f sec "
+      "-> resume target %.3f m",
+      waited_sec,
+      target_m_);
+  }
+
+  // timeout_sec counts only non-obstacle time.
+  const double elapsed_sec =
+    std::max(0.0, (now - start_time_).seconds());
+
+  const double effective_move_elapsed_sec =
+    std::max(0.0, elapsed_sec - accumulated_obstacle_wait_sec_);
+
   if (
     timeout_sec_ > 0.0 &&
-    (node_->now() - start_time_).seconds() >= timeout_sec_)
+    effective_move_elapsed_sec >= timeout_sec_)
   {
     stop();
 
     RCLCPP_ERROR(
       node_->get_logger(),
-      "[RailMoveToDistance] Timeout");
+      "[RailMoveToDistance] Move timeout: active=%.2f sec "
+      "(obstacle wait excluded=%.2f sec)",
+      effective_move_elapsed_sec,
+      accumulated_obstacle_wait_sec_);
 
     return BT::NodeStatus::FAILURE;
   }
@@ -252,23 +336,12 @@ BT::NodeStatus RailMoveToDistance::onRunning()
 
   if (!getFreshDistance(distance_m)) {
     stop();
-    return BT::NodeStatus::RUNNING;
-  }
-
-  bool obstacle_now = false;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    obstacle_now = obstacle_;
-  }
-
-  if (obstacle_now) {
-    stop();
 
     RCLCPP_WARN_THROTTLE(
       node_->get_logger(),
       *node_->get_clock(),
       2000,
-      "[RailMoveToDistance] Obstacle detected - waiting");
+      "[RailMoveToDistance] /rail/odom stale or missing - waiting");
 
     return BT::NodeStatus::RUNNING;
   }
@@ -276,7 +349,7 @@ BT::NodeStatus RailMoveToDistance::onRunning()
   const double error = target_m_ - distance_m;
 
   if (std::abs(error) <= tolerance_m_) {
-    // The rail motor is stopped BEFORE the success signal is emitted.
+    // Stop first, then report success.
     stop();
     setOutput("reached_m", distance_m);
     publishTargetReached(distance_m);
@@ -284,6 +357,8 @@ BT::NodeStatus RailMoveToDistance::onRunning()
     return BT::NodeStatus::SUCCESS;
   }
 
+  // last_command_ is STOP after obstacle waiting, so the first tick after
+  // obstacle clear automatically republishes FORWARD/BACK.
   if (error > 0.0) {
     publishCommand("FORWARD");
   } else {

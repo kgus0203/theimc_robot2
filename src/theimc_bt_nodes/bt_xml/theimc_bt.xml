@@ -196,41 +196,103 @@
 
             <!-- HOME에서 켜진 ArUco docking을 새 미션 시작 전에 반드시 해제 -->
             <ToggleDocking enable="false"/>
-            <Sequence name="ResumeThenRemainingMission">
+            <!--
+              RESUME 정책:
+              중단된 Rail을 먼저 정확히 재개하고 완료한 뒤,
+              resume_next_rail_index부터 남아 있는 selected rail을 계속 수행한다.
+              더 이상 수행할 Rail이 없으면 ForEachRail이 즉시 SUCCESS하고 HOME으로 간다.
+            -->
+            <Fallback name="ResumeOrNormalMission">
 
-              <!-- Resume가 있으면 먼저 처리, 없으면 바로 정상 미션 -->
-              <Fallback name="ResumeIfPending">
+              <!-- =============================== -->
+              <!-- RESUME: interrupted rail -> HOME -->
+              <!-- =============================== -->
+              <Sequence name="ResumeInterruptedMissionThenContinue">
 
-                <Sequence name="ResumeInterruptedRail">
+                <LoadResumeTarget
+                  selected_rails="{selected_rails}"
+                  rail_id="{rail_id}"
+                  progress_m="{resume_progress_m}"
+                  next_rail_index="{resume_next_rail_index}"
+                  resume_stage="{resume_stage}"/>
 
-                  <LoadResumeTarget
-                    selected_rails="{selected_rails}"
-                    rail_id="{rail_id}"
-                    progress_m="{resume_progress_m}"
-                    next_rail_index="{resume_next_rail_index}"
-                    resume_stage="{resume_stage}"/>
+                <!--
+                  1) 중단됐던 Rail의 저장 위치로 복귀
+                  2) 남은 작업 수행
+                  3) RailExit + 차체 후진
+                  4) Resume pending clear
+                -->
+                <SubTreePlus
+                  ID="ResumeRailRoutine"
+                  rail_id="{rail_id}"
+                  resume_progress_m="{resume_progress_m}"
+                  resume_stage="{resume_stage}"
+                  mission_return_mode="{mission_return_mode}"
+                  __autoremap="1"/>
+
+                <!--
+                  재개한 Rail 바로 다음 index부터 이어서 수행.
+                  예:
+                    selected=[1,2,3], resume rail=2 -> next_index=2 -> rail3 수행
+                    selected=[2],     resume rail=2 -> next_index=1 == size -> 즉시 SUCCESS
+                -->
+                <SetBlackboard
+                  output_key="last_executed_index"
+                  value="{resume_next_rail_index}"/>
+
+                <ForEachRail
+                  rail_list="{selected_rails}"
+                  current_rail="{rail_id}"
+                  start_index="{last_executed_index}"
+                  last_executed_index="{last_executed_index}">
 
                   <SubTreePlus
-                    ID="ResumeRailRoutine"
+                    ID="RailRoutine"
                     rail_id="{rail_id}"
-                    resume_progress_m="{resume_progress_m}"
-                    resume_stage="{resume_stage}"
                     mission_return_mode="{mission_return_mode}"
                     __autoremap="1"/>
 
-                  <!-- Resume Rail 완전 완료 후 다음 선택 Rail index부터 시작 -->
-                  <SetBlackboard
-                    output_key="last_executed_index"
-                    value="{resume_next_rail_index}"/>
+                </ForEachRail>
 
-                </Sequence>
+                <!--
+                  위 ForEachRail이 SUCCESS가 되는 경우:
+                  - 남은 Rail을 모두 수행했거나
+                  - 애초에 다음 Rail이 하나도 없는 경우
+                  둘 다 여기서 HOME으로 이동.
+                -->
+                <SetBlackboard
+                  output_key="mission_return_mode"
+                  value="DIRECT"/>
 
-                <AlwaysSuccess/>
+                <SetBlackboard
+                  output_key="return_mode"
+                  value="DIRECT"/>
 
-              </Fallback>
+                <GoToPose
+                  x="{home_x}"
+                  y="{home_y}"
+                  yaw="{home_yaw}"/>
 
-              <!-- Resume 여부와 관계없이 반드시 남은 Rail들을 순회 -->
-              <!-- 저전력 감지는 최상위 ReactiveFallback Priority 1에서만 수행 -->
+                <ToggleDocking enable="true"/>
+
+                <SetBlackboard
+                  output_key="return_mode"
+                  value="MISSION_COMPLETE"/>
+
+                <SetBlackboard
+                  output_key="mission_gate"
+                  value="WAIT_TRIGGER"/>
+
+                <SetBlackboard
+                  output_key="last_executed_index"
+                  value="0"/>
+
+              </Sequence>
+
+
+              <!-- =============================== -->
+              <!-- NORMAL: selected rails -> HOME  -->
+              <!-- =============================== -->
               <Sequence name="MultiRailMission">
 
                 <ForEachRail
@@ -258,19 +320,17 @@
                   output_key="return_mode"
                   value="MISSION_COMPLETE"/>
 
-                <!-- 정상 미션 완료 후 다음 미션은 새 GUI Trigger를 기다림 -->
                 <SetBlackboard
                   output_key="mission_gate"
                   value="WAIT_TRIGGER"/>
 
-                <!-- 다음 신규 미션은 selected_rails의 첫 번째 Rail부터 시작 -->
                 <SetBlackboard
                   output_key="last_executed_index"
                   value="0"/>
 
               </Sequence>
 
-            </Sequence>
+            </Fallback>
 
           </Sequence>
 
@@ -677,7 +737,8 @@
         value="DIRECT"/>
 
       <!-- 작업 + 탈출까지 성공한 뒤에만 Resume pending 제거 -->
-      <ClearResumeTarget/>
+      <ClearResumeTarget
+        progress_file="/home/jeff/theimc_robot/src/theimc_bt_nodes/config/rail_progress.yaml"/>
 
     </Sequence>
   </BehaviorTree>
@@ -701,9 +762,9 @@
 
       <PublishRailCommand command="STOP"/>
 
-      <!-- OUT_RAIL 이후 멈춰 기다리지 않고 바로 5초 차체 후진 -->
+      <!-- OUT_RAIL 이후 차체 -0.1 m/s로 5초 후진 -->
       <DriveCmdVel
-        linear_x="-0.2"
+        linear_x="-0.1"
         angular_z="0.0"
         seconds="5.0"/>
 

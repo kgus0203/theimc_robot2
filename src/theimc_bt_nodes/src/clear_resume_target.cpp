@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "rclcpp/rclcpp.hpp"
 #include "theimc_bt_nodes/rail_progress_store.hpp"
 
 namespace theimc_bt_nodes
@@ -33,6 +34,11 @@ BT::NodeStatus ClearResumeTarget::tick()
     resolveRailProgressFile(requested_file);
 
   clearResumeTarget(path);
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("mission_bt_runner"),
+    "[ClearResumeTarget] resume pending cleared: file=%s",
+    path.c_str());
 
   return BT::NodeStatus::SUCCESS;
 }
