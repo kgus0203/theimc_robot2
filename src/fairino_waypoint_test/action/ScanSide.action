@@ -1,0 +1,11 @@
+# Select one side: "right" or "left".
+string side
+---
+bool success
+string message
+uint32 completed_waypoints
+---
+string side
+string stage
+uint32 completed_waypoints
+uint32 total_waypoints
