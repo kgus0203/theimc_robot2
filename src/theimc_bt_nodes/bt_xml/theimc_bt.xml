@@ -176,17 +176,55 @@
               <!-- 이미 활성 미션: gate 통과 -->
               <AlwaysSuccess/>
 
-              <!-- 최초 정상 미션 시작 -->
+              <!--
+                최초 정상 미션 시작.
+                사용자가 새 /mission_trigger를 보냈다는 것은 "새 미션"이므로
+                이전 테스트/중단에서 남은 resume.pending은 여기서 폐기한다.
+                배터리 충전 후 AUTO_RESUME 경로는 이 블록을 거치지 않으므로
+                정상적인 자동 재개 정보는 보존된다.
+              -->
               <Sequence name="WaitForNewMissionTrigger">
                 <WaitForMissionTrigger selected_rails="{selected_rails}"/>
+
+                <ClearResumeTarget
+                  progress_file="/home/jeff/theimc_robot/src/theimc_bt_nodes/config/rail_progress.yaml"/>
+
+                <SetBlackboard
+                  output_key="last_executed_index"
+                  value="0"/>
+
+                <SetBlackboard
+                  output_key="mission_return_mode"
+                  value="DIRECT"/>
+
+                <SetBlackboard
+                  output_key="return_mode"
+                  value="MISSION_COMPLETE"/>
+
                 <SetBlackboard
                   output_key="mission_gate"
                   value="MISSION_ACTIVE"/>
               </Sequence>
 
-              <!-- 예상치 못한 값은 안전하게 새 trigger를 기다림 -->
+              <!-- 예상치 못한 gate 값도 새 미션으로 취급 -->
               <Sequence name="WaitForNewMissionTriggerDefault">
                 <WaitForMissionTrigger selected_rails="{selected_rails}"/>
+
+                <ClearResumeTarget
+                  progress_file="/home/jeff/theimc_robot/src/theimc_bt_nodes/config/rail_progress.yaml"/>
+
+                <SetBlackboard
+                  output_key="last_executed_index"
+                  value="0"/>
+
+                <SetBlackboard
+                  output_key="mission_return_mode"
+                  value="DIRECT"/>
+
+                <SetBlackboard
+                  output_key="return_mode"
+                  value="MISSION_COMPLETE"/>
+
                 <SetBlackboard
                   output_key="mission_gate"
                   value="MISSION_ACTIVE"/>

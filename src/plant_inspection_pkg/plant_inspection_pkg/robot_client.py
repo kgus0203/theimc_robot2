@@ -42,7 +42,7 @@ class RobotArmClient:
         self._callback_group = ReentrantCallbackGroup()
         self._joint_state_sub = node.create_subscription(
             JointState,
-            "/joint_states",
+            "/arm/joint_states",
             self._joint_state_callback,
             10,
             callback_group=self._callback_group,

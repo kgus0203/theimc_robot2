@@ -36,5 +36,5 @@ rails:
     progress_m: 0.0
     completed: false
 resume:
-  pending: true
-  rail_id: 2
+  pending: false
+  rail_id: 0

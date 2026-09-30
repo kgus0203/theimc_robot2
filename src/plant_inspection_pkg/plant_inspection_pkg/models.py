@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 def utc_offset_timestamp() -> str:
@@ -22,10 +22,10 @@ class Location:
 
 @dataclass
 class Environment:
-    temperature_c: float
-    humidity_pct: float
-    co2_ppm: int
-    illuminance_lux: int
+    temperature_c: Optional[float]
+    humidity_pct: Optional[float]
+    co2_ppm: Optional[int]
+    solar_radiation_w_m2: Optional[float]
 
 
 @dataclass
@@ -80,7 +80,11 @@ class Inspection:
     @classmethod
     def from_dict(cls, data: Dict) -> "Inspection":
         location = Location(**data["location"])
-        environment = Environment(**data["environment"])
+        environment_data = dict(data["environment"])
+        # Old queued inspections contain lux, which cannot be reinterpreted as W/m².
+        environment_data.pop("illuminance_lux", None)
+        environment_data.setdefault("solar_radiation_w_m2", None)
+        environment = Environment(**environment_data)
         captures = []
         for item in data["captures"]:
             camera = item["camera_pose"]

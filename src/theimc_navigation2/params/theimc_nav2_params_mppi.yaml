@@ -6,7 +6,7 @@ amcl:
     alpha3: 0.2
     alpha4: 0.2
     alpha5: 0.2
-    base_frame_id: "base_footprint"
+    base_frame_id: "agv_base_footprint"
     beam_skip_distance: 0.5
     beam_skip_error_threshold: 0.9
     beam_skip_threshold: 0.3
@@ -51,7 +51,7 @@ bt_navigator:
   ros__parameters:
     use_sim_time: False
     global_frame: map
-    robot_base_frame: base_footprint
+    robot_base_frame: agv_base_footprint
     odom_topic: /odom
     # default_bt_xml_filename: "custom_button_bt.xml"
     default_nav_to_pose_bt_xml: "/home/jeff/theimc_robot/src/theimc_navigation2/behavior_trees/nav_to_pose_with_spin.xml"
@@ -277,7 +277,7 @@ local_costmap:
       update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: odom
-      robot_base_frame: base_footprint
+      robot_base_frame: agv_base_footprint
       use_sim_time: False
       rolling_window: true
       width: 3
@@ -338,7 +338,7 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 1.0
       global_frame: map
-      robot_base_frame: base_footprint
+      robot_base_frame: agv_base_footprint
       use_sim_time: False
       footprint: "[[0.40, 0.55], [0.40, -0.55], [-0.40, -0.55], [-0.40, 0.55]]"
       footprint_padding: 0.01
@@ -432,7 +432,7 @@ behavior_server:
       plugin: "nav2_behaviors/Wait"
 
     global_frame: odom
-    robot_base_frame: base_footprint
+    robot_base_frame: agv_base_footprint
     transform_tolerance: 1.0
     use_sim_time: False
     simulate_ahead_time: 2.0

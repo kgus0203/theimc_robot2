@@ -35,12 +35,13 @@ ros2 action send_goal /scan_side fairino_waypoint_test/action/ScanSide "{side: l
 
 `action/ScanSide.action`:
 
-- Goal: `string side` (`right` 또는 `left`)
+- Goal: `string side` (`right` 또는 `left`), `string capture_service`, `string inspection_id`
+  (`capture_service`와 `inspection_id`는 plant_inspection_pkg 연동 시 사용하며 단독 이동에서는 생략)
 - Result: `bool success`, `string message`, `uint32 completed_waypoints`
 - Feedback: `string side`, `string stage`, `uint32 completed_waypoints`, `uint32 total_waypoints`
 
 `stage`의 `reached: 01 left upper right` 등은 해당 기록 자세에 도착했다는 뜻입니다.
-카메라 촬영 명령이나 촬영 완료 대기는 구현하지 않았습니다. 양쪽 모두 각 자세 도착 뒤 3초 정지합니다. 촬영 완료와 연동하려면 별도 촬영 호출 및 완료 대기를 연결해야 합니다.
+양쪽 모두 각 자세 도착 뒤 3초 정지합니다. `capture_service`가 지정된 요청은 정지 후 CaptureWaypoint 서비스를 호출하고 성공 응답을 받은 뒤 다음 자세로 이동합니다. 촬영 실패 또는 30초 응답 시간 초과 시 스캔을 중단합니다. 기본값은 빈 문자열이며 기존 단독 명령은 이동만 수행합니다.
 
 ## 방향별 기록 자세 실행
 
@@ -153,3 +154,68 @@ Action을 보내면 최신 목표 마커가 발행됩니다.
 양쪽 각각의 입력 순서, 도착 횟수, 9번의 3초 정지, 누적 9개 경로 마커, 성공 결과,
 중복/잘못된 요청 거절 및 취소 결과를 확인했습니다. RViz GUI 화면 자체는 직접
 확인하지 않았습니다. `test/check_scan_action.py`는 격리된 mock 환경에서만 실행하세요.
+
+## 팔 상태 토픽
+
+Fairino5 MoveIt launch와 waypoint launch는 `/joint_states`를 `/arm/joint_states`로
+리매핑합니다. demo의 동적 관절 상태는 `/arm/dynamic_joint_states`로 발행합니다.
+기존 팔 bringup도 새 launch로 재시작해야 발행자와 구독자가 일치합니다.
+`/scan_side`, `/start_inspection` 액션과 명령 토픽 이름은 그대로입니다.
+별도 실행하는 외부 구독 노드는 `--ros-args -r /joint_states:=/arm/joint_states`를
+사용하거나 구독 설정을 변경해야 합니다.
+
+## 스캔 완료 후 대기 자세
+
+좌/우 스캔의 모든 이동 및 촬영이 정상 완료되면 마지막으로 대기 자세를
+MoveIt 충돌 검사·경로 계획을 거쳐 실행합니다. 복귀까지 성공해야 액션이 성공합니다.
+대기 자세는 촬영하지 않으며 completed_waypoints/total_waypoints에 포함하지 않습니다.
+피드백은 `returning to standby`, `planning: standby`, `moving: standby`,
+`returned to standby` 순서입니다.
+
+`recorded_poses.hpp`의 `standby`는 입력된 마지막 관절 샘플을 이름 기준으로 저장합니다.
+`j1,j2,j4,j5,j3,j6` 순서이며 단위는 rad입니다. velocity/effort의 NaN은 사용하지 않습니다.
+복귀 계획/실행 실패는 액션 실패로 보고합니다. 스캔 실패·취소·종료 요청 시에는
+기존 중단 동작을 유지하여 추가 복귀 이동을 시작하지 않습니다.
+이 동작은 `/scan_side`와 이를 호출하는 방향별 `/start_inspection`에 적용됩니다.
+
+## 실제 로봇에서 실행 성공만 뜨고 움직이지 않는 경우
+
+`ServoJ ... code:14`는 SDK의 명령 실행 실패입니다. 기존 v3.9.5 드라이버는
+ServoMoveStart를 호출하지 않고 ServoJ를 전송했고, 전송 실패도 OK로 반환했습니다.
+현재 Fairino5 설정은 수정한 `fairino_hardware_v3_9_5/FairinoHardwareInterface`를
+명시적으로 선택합니다. 다른 버전의 동명 플러그인과 혼용하지 않습니다.
+
+- 활성화: 실측 관절 읽기 → 명령/상태 동기화 → ServoMoveStart 성공 확인
+- 구동: 100 Hz, 명령·실측 값 유효성 및 SDK 반환값 검사
+- 실패: 하드웨어 ERROR 반환 및 정지. 자동 알람 해제/재시작은 하지 않음
+- 완료: 컨트롤러 추종 오차 0.20 rad, 목표 오차 0.02 rad 검사
+- 스캔: 새 `/arm/joint_states`에서 목표 도달을 확인한 후에만 촬영
+
+로봇 웹 화면/티치펜던트에서 정상 통신, Enable, 자동 모드, 알람 해제 상태를
+확인해야 합니다. 드라이버는 이 상태를 강제로 바꾸지 않습니다.
+
+모든 팔/검사 launch를 종료한 뒤 빌드하고, 각 터미널에서 setup을 다시 source합니다.
+
+```bash
+cd ~/theimc_robot
+colcon build --symlink-install --packages-select \
+  fairino_hardware_v3_9_5 fairino5_v6_moveit2_config fairino_waypoint_test plant_inspection_pkg
+source install/setup.bash
+```
+
+기존 네 터미널 흐름을 그대로 사용합니다.
+
+```bash
+# 1: 실제 하드웨어 + MoveIt. Hardware ready ... ServoMoveStart succeeded 확인
+ros2 launch fairino5_v6_moveit2_config demo.launch.py use_rviz:=false
+# 2: 별도 터미널. 초기 동작 확인에는 기본 0.1 속도/가속도를 사용
+ros2 launch fairino_waypoint_test waypoint_test.launch.py start_demo:=false use_rviz:=false
+# 3: 별도 터미널
+ros2 launch plant_inspection_pkg inspection_mvp.launch.py
+# 4: 별도 터미널
+ros2 action send_goal /start_inspection interfaces_pkg/action/StartInspection \
+  "{region: 'sj', device_number: 1, bed_id: 1, hole_id: 1, side: 'left'}" --feedback
+```
+
+서보 시작/전송이 계속 거절되면 첫 SDK 오류 코드와 로봇 알람을 확인합니다.
+TF의 AGV/arm 트리 연결은 별도 장착 변환 문제이며, 임의의 identity 변환으로 연결하지 않습니다.

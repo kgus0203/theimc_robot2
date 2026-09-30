@@ -7,7 +7,7 @@ from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDesc
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetRemap
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
 
@@ -32,6 +32,7 @@ def generate_launch_description():
               for name in ("wall_distance", "wall_thickness", "wall_width", "wall_height",
                            "connection_timeout", "velocity_scale", "acceleration_scale")}
     return LaunchDescription(args + [
+        SetRemap(src='/joint_states', dst='/arm/joint_states'),
         LogInfo(msg=["start_demo=", LaunchConfiguration("start_demo"),
                      ". With start_demo=false, an existing MoveIt demo/hardware bringup is required."]),
         # IncludeLaunchDescription sets arguments in the current context. Isolate

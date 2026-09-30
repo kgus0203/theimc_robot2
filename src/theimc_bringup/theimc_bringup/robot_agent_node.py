@@ -142,7 +142,7 @@ class RobotAgent(Node):
         self.create_subscription(
             Path, str(self.get_parameter("plan_topic").value), self._path_cb, 10)
         self.create_subscription(BatteryState, "/battery_state", self._battery_cb, 10)
-        self.create_subscription(JointState, "/joint_states", self._joints_cb, 10)
+        self.create_subscription(JointState, "/arm/joint_states", self._joints_cb, 10)
         self.create_subscription(
             String, "/arm_command_result", self._arm_command_result_cb, 10)
 

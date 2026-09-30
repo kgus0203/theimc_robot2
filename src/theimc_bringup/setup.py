@@ -35,11 +35,13 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'bringup_node = theimc_bringup.theimc_bringup:main',
+            #'bringup_node = theimc_bringup.theimc_bringup:main',
+            'bringup_node = theimc_bringup.new_theimc_bringup:main',
             'robot_agent_node = theimc_bringup.robot_agent_node:main',
             'last_pose_manager_node = theimc_bringup.last_pose_manager_node:main',
             'isaac_vslam_odom_adapter_node = theimc_bringup.isaac_vslam_odom_adapter_node:main',
             'rtabmap_pose_validator_node = theimc_bringup.rtabmap_pose_validator_node:main',
+            
         ],
     },
 )

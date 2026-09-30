@@ -145,13 +145,17 @@ bool ForEachRail::initializeRailList()
 
   rail_ids_ = std::move(parsed_ids);
 
-  int start_idx=0;
+  int start_idx = 0;
   if (!getInput("start_index", start_idx)) {
     start_idx = 0;
   }
 
-  if (start_idx < 0 || static_cast<std::size_t>(start_idx) >= rail_ids_.size()) {
-    RCLCPP_WARN(node_->get_logger(), "ForEachRail start_index %d is out of bounds. Defaulting to 0.", start_idx);
+  // start_index == rail_ids_.size() means all selected rails are already complete.
+  // This must NOT reset to 0.
+  if (start_idx < 0 || static_cast<std::size_t>(start_idx) > rail_ids_.size()) {
+    RCLCPP_WARN(
+      node_->get_logger(), "ForEachRail start_index %d is out of bounds. Defaulting to 0.",
+      start_idx);
     start_idx = 0;
   }
 
@@ -176,6 +180,11 @@ BT::NodeStatus ForEachRail::tick()
   }
 
   if (current_index_ >= rail_ids_.size()) {
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "ForEachRail no remaining rails: start/current index=%zu, total=%zu -> SUCCESS",
+      current_index_,
+      rail_ids_.size());
     return BT::NodeStatus::SUCCESS;
   }
 

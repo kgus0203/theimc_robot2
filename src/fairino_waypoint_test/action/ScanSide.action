@@ -1,5 +1,8 @@
 # Select one side: "right" or "left".
 string side
+# Optional synchronous capture hook. Empty keeps motion-only behavior.
+string capture_service
+string inspection_id
 ---
 bool success
 string message

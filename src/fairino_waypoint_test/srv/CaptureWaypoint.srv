@@ -1,0 +1,11 @@
+string inspection_id
+string side
+string viewpoint
+uint32 waypoint_index
+uint32 total_waypoints
+float64[] joints_deg
+# Wrist pose in the robot model frame; camera extrinsics are not applied.
+geometry_msgs/PoseStamped tool_pose
+---
+bool success
+string message

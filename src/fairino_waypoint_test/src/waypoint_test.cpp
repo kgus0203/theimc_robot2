@@ -10,6 +10,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <fairino_waypoint_test/action/scan_side.hpp>
+#include <fairino_waypoint_test/srv/capture_waypoint.hpp>
 #include "recorded_poses.hpp"
 #include <moveit_msgs/msg/display_trajectory.hpp>
 #include <algorithm>
@@ -20,6 +21,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <sensor_msgs/msg/joint_state.hpp>
 
 using namespace std::chrono_literals;
 using Marker = visualization_msgs::msg::Marker;
@@ -71,6 +75,17 @@ public:
       rclcpp::Duration::from_seconds(node->get_parameter("connection_timeout").as_double())),
     state_(group_.getRobotModel())
   {
+    joint_state_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>(
+      "/arm/joint_states", rclcpp::SensorDataQoS(),
+      [this](sensor_msgs::msg::JointState::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(joint_mutex_);
+        measured_joints_.clear();
+        for (size_t i = 0; i < msg->name.size() && i < msg->position.size(); ++i)
+          measured_joints_[msg->name[i]] = msg->position[i];
+        joint_received_at_ = std::chrono::steady_clock::now();
+        ++joint_sequence_;
+        joint_updated_.notify_all();
+      });
     const double speed = node->get_parameter("velocity_scale").as_double();
     const double accel = node->get_parameter("acceleration_scale").as_double();
     if (!std::isfinite(speed) || speed <= 0 || speed > 1 ||
@@ -188,16 +203,26 @@ private:
     // Keep the 440mm cube, raising its top to cover the fixed base.
     support.translation().z() = 0.079 - 0.22;
     box("scan_base_box", "base_link", support, {0.44, 0.44, 0.44}, 0.55f, 0.55f, 0.55f);
-    auto client = node_->create_client<moveit_msgs::srv::ApplyPlanningScene>("/apply_planning_scene");
     const auto timeout = std::chrono::duration<double>(
       node_->get_parameter("connection_timeout").as_double());
-    auto scene_client = node_->create_client<moveit_msgs::srv::GetPlanningScene>("/get_planning_scene");
+    // These clients are created after the main node has already been added to
+    // its executor.  On Humble, the executor can miss those newly-created
+    // entities, leaving the futures pending even though MoveIt replied.  Use a
+    // short-lived node and spin it explicitly while building the scene.
+    auto setup_node = std::make_shared<rclcpp::Node>(
+      "fairino_waypoint_scene_setup",
+      rclcpp::NodeOptions()
+        .start_parameter_services(false)
+        .start_parameter_event_publisher(false));
+    auto scene_client = setup_node->create_client<moveit_msgs::srv::GetPlanningScene>(
+      "/get_planning_scene");
     if (!scene_client->wait_for_service(timeout))
       throw std::runtime_error("Cannot read mounting collision permissions");
     auto scene_request = std::make_shared<moveit_msgs::srv::GetPlanningScene::Request>();
     scene_request->components.components = moveit_msgs::msg::PlanningSceneComponents::ALLOWED_COLLISION_MATRIX;
     auto scene_future = scene_client->async_send_request(scene_request);
-    if (scene_future.wait_for(timeout) != std::future_status::ready)
+    if (rclcpp::spin_until_future_complete(setup_node, scene_future, timeout) !=
+        rclcpp::FutureReturnCode::SUCCESS)
       throw std::runtime_error("Timed out reading mounting collision permissions");
     collision_detection::AllowedCollisionMatrix allowed(
       scene_future.get()->scene.allowed_collision_matrix);
@@ -206,10 +231,13 @@ private:
     allowed.setEntry("scan_base_box", "base_link", true);
     allowed.setEntry("scan_base_box", "shoulder_link", true);
     allowed.getMessage(request->scene.allowed_collision_matrix);
+    auto client = setup_node->create_client<moveit_msgs::srv::ApplyPlanningScene>(
+      "/apply_planning_scene");
     if (!client->wait_for_service(timeout))
       throw std::runtime_error("Cannot add obstacles: /apply_planning_scene unavailable");
     auto future = client->async_send_request(request);
-    if (future.wait_for(timeout) != std::future_status::ready || !future.get()->success)
+    if (rclcpp::spin_until_future_complete(setup_node, future, timeout) !=
+        rclcpp::FutureReturnCode::SUCCESS || !future.get()->success)
       throw std::runtime_error("Obstacle registration failed; scan action server will not start");
     RCLCPP_INFO(node_->get_logger(),
       "Collision scene ready: walls at +/-%.3f m (inner faces), base box 0.44 m cube with top at base_link z=0.079 m",
@@ -240,6 +268,15 @@ private:
     auto result = std::make_shared<Scan::Result>();
     try {
       checkpoint();
+      capture_client_.reset();
+      if (!handle->get_goal()->capture_service.empty()) {
+        if (handle->get_goal()->inspection_id.empty())
+          throw std::runtime_error("inspection_id is required for capture");
+        capture_client_ = node_->create_client<fairino_waypoint_test::srv::CaptureWaypoint>(
+          handle->get_goal()->capture_service);
+        if (!capture_client_->wait_for_service(5s))
+          throw std::runtime_error("Inspection capture service unavailable");
+      }
       feedback("checking joint states");
       if (!group_.startStateMonitor(30.0) || !group_.getCurrentState(30.0))
         throw std::runtime_error("No current joint state received");
@@ -250,14 +287,22 @@ private:
       paths_.markers.push_back(clear);
       path_pub_->publish(paths_);
       paths_.markers.clear();
+      state_.setVariablePositions(recorded::target(recorded::standby));
+      state_.update();
+      if (!state_.satisfiesBounds())
+        throw std::runtime_error("standby: joint limits exceeded");
       if (handle->get_goal()->side == "right") {
         runRecorded(recorded::poses);
       } else {
         runRecorded(recorded::left_poses);
       }
       checkpoint();
+      feedback("returning to standby");
+      moveRecorded(recorded::standby);
+      checkpoint();
+      feedback("returned to standby");
       result->success = true;
-      result->message = handle->get_goal()->side + " scan motion complete";
+      result->message = handle->get_goal()->side + " scan complete; returned to standby";
     } catch (const std::exception& error) {
       result->success = false;
       result->message = error.what();
@@ -304,28 +349,7 @@ private:
     }
     pub_->publish(markers_);
     for (const auto& pose : poses) {
-      checkpoint();
-      feedback(std::string("planning: ") + pose.name);
-      group_.setStartStateToCurrentState();
-      moveit::planning_interface::MoveGroupInterface::Plan result;
-      if (!group_.setJointValueTarget(recorded::target(pose)))
-        throw std::runtime_error(std::string(pose.name) + ": invalid joint target");
-      bool planned = false;
-      for (int attempt = 1; attempt <= 3; ++attempt) {
-        checkpoint();
-        group_.setStartStateToCurrentState();
-        if (group_.plan(result) == moveit::core::MoveItErrorCode::SUCCESS) {
-          planned = true;
-          break;
-        }
-        RCLCPP_WARN(node_->get_logger(), "%s: plan attempt %d/3 failed", pose.name, attempt);
-      }
-      if (!planned)
-        throw std::runtime_error(std::string(pose.name) + ": planning failed after 3 attempts");
-      Joints degrees;
-      const auto values = recorded::target(pose);
-      for (const auto& name : NAMES) degrees.push_back(values.at(name) / RAD);
-      execute(degrees, pose.name, result);
+      moveRecorded(pose);
       ++completed_;
       feedback(std::string("reached: ") + pose.name);
       feedback(std::string("holding 3 seconds: ") + pose.name);
@@ -334,7 +358,73 @@ private:
         checkpoint();
         std::this_thread::sleep_for(50ms);
       }
+      if (capture_client_) captureWaypoint(pose.name, poses.size());
     }
+  }
+
+  void moveRecorded(const recorded::Pose& pose)
+  {
+    checkpoint();
+    feedback(std::string("planning: ") + pose.name);
+    group_.setStartStateToCurrentState();
+    moveit::planning_interface::MoveGroupInterface::Plan result;
+    if (!group_.setJointValueTarget(recorded::target(pose)))
+      throw std::runtime_error(std::string(pose.name) + ": invalid joint target");
+    bool planned = false;
+    for (int attempt = 1; attempt <= 3; ++attempt) {
+      checkpoint();
+      group_.setStartStateToCurrentState();
+      if (group_.plan(result) == moveit::core::MoveItErrorCode::SUCCESS) {
+        planned = true;
+        break;
+      }
+      RCLCPP_WARN(node_->get_logger(), "%s: plan attempt %d/3 failed", pose.name, attempt);
+    }
+    if (!planned)
+      throw std::runtime_error(std::string(pose.name) + ": planning failed after 3 attempts");
+    Joints degrees;
+    const auto values = recorded::target(pose);
+    for (const auto& name : NAMES) degrees.push_back(values.at(name) / RAD);
+    execute(degrees, pose.name, result);
+  }
+
+  void captureWaypoint(const std::string& name, size_t total)
+  {
+    checkpoint();
+    auto current = group_.getCurrentState(5.0);
+    if (!current) throw std::runtime_error("No joint state for capture");
+    auto request = std::make_shared<fairino_waypoint_test::srv::CaptureWaypoint::Request>();
+    request->inspection_id = goal_->get_goal()->inspection_id;
+    request->side = goal_->get_goal()->side;
+    request->viewpoint = name;
+    request->waypoint_index = completed_;
+    request->total_waypoints = total;
+    for (const auto& joint : NAMES)
+      request->joints_deg.push_back(current->getVariablePosition(joint) / RAD);
+    const auto& transform = current->getGlobalLinkTransform("wrist3_link");
+    request->tool_pose.header.frame_id = group_.getRobotModel()->getModelFrame();
+    request->tool_pose.header.stamp = node_->now();
+    auto& pose = request->tool_pose.pose;
+    pose.position.x = transform.translation().x();
+    pose.position.y = transform.translation().y();
+    pose.position.z = transform.translation().z();
+    const Eigen::Quaterniond q(transform.rotation());
+    pose.orientation.x = q.x(); pose.orientation.y = q.y();
+    pose.orientation.z = q.z(); pose.orientation.w = q.w();
+    feedback("capturing: " + name);
+    auto future = capture_client_->async_send_request(request);
+    const auto deadline = std::chrono::steady_clock::now() + 30s;
+    while (future.wait_for(50ms) != std::future_status::ready) {
+      checkpoint();
+      if (std::chrono::steady_clock::now() >= deadline) {
+        capture_client_->remove_pending_request(future);
+        throw std::runtime_error("Capture timed out; scan stopped");
+      }
+    }
+    auto response = future.get();
+    if (!response->success)
+      throw std::runtime_error("Capture failed: " + response->message);
+    feedback("captured: " + name);
   }
 
   void showPlan(const moveit::planning_interface::MoveGroupInterface::Plan& plan)
@@ -380,8 +470,31 @@ private:
     text << name << " [deg]:";
     for (double q : joints) text << ' ' << q;
     RCLCPP_INFO(node_->get_logger(), "%s", text.str().c_str());
+    uint64_t before;
+    {
+      std::lock_guard<std::mutex> lock(joint_mutex_);
+      before = joint_sequence_;
+    }
     if (group_.execute(result) != moveit::core::MoveItErrorCode::SUCCESS)
       throw std::runtime_error(name + ": execution failed; test stopped");
+    // A controller success alone is not proof that the physical arm arrived.
+    const auto deadline = std::chrono::steady_clock::now() + 3s;
+    std::unique_lock<std::mutex> lock(joint_mutex_);
+    while (true) {
+      checkpoint();
+      const auto now = std::chrono::steady_clock::now();
+      bool reached = joint_sequence_ > before && now - joint_received_at_ < 500ms;
+      for (size_t i = 0; i < NAMES.size(); ++i) {
+        const auto found = measured_joints_.find(NAMES[i]);
+        if (found == measured_joints_.end() || !std::isfinite(found->second) ||
+            std::abs(found->second - joints.at(i) * RAD) > 0.02) reached = false;
+      }
+      if (reached) break;
+      if (now >= deadline)
+        throw std::runtime_error(name +
+          ": measured /arm/joint_states did not reach target (0.02 rad tolerance); capture blocked");
+      joint_updated_.wait_for(lock, 50ms);
+    }
   }
 
   void label(const std::string& text, const Eigen::Vector3d& local, int id)
@@ -410,6 +523,13 @@ private:
     markers_.markers.push_back(marker);
   }
 
+  rclcpp::Client<fairino_waypoint_test::srv::CaptureWaypoint>::SharedPtr capture_client_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+  std::mutex joint_mutex_;
+  std::condition_variable joint_updated_;
+  std::map<std::string, double> measured_joints_;
+  std::chrono::steady_clock::time_point joint_received_at_{};
+  uint64_t joint_sequence_{0};
   std::atomic<bool> busy_{false};
   std::thread worker_;
   rclcpp_action::Server<Scan>::SharedPtr server_;

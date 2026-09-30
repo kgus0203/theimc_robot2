@@ -50,7 +50,6 @@ def generate_launch_description():
     ld.add_action(dla_use_sim_time)
     # ld.add_action(rviz_cmd)
     ld.add_action(robot_state_publisher_cmd)
-    ld.add_action(joint_state_publisher_gui_cmd)
 
     return ld
 

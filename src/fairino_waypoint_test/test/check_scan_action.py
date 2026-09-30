@@ -56,9 +56,12 @@ try:
         for i in holds:
             end = times[i + 1] if i + 1 < len(times) else time.monotonic()
             assert end - times[i] >= 2.9, (i, end - times[i])
-        assert paths and len(paths[-1].markers) == expected
+        assert paths and len(paths[-1].markers) == expected + 1
         assert all(len(m.points) >= 2 for m in paths[-1].markers)
         assert [f.stage.split()[1] for f in reached] == [name.split()[0] for name in recorded_names]
+        stages = [f.stage for f in updates]
+        assert stages[-1] == 'returned to standby'
+        assert stages.index('returning to standby') > holds[-1]
         print(f'PASS recorded order, {expected} 3-second holds, {expected} planned tool paths', flush=True)
         print('PASS', side, f'{expected} targets, feedback, success, busy rejection', flush=True)
     handle = send('right')

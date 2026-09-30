@@ -69,7 +69,7 @@ def generate_launch_description():
     # URDF에서 base_link collision box 크기 읽기
     urdf_root = ET.parse(urdf_file).getroot()
 
-    base_link = urdf_root.find("./link[@name='base_link']")
+    base_link = urdf_root.find("./link[@name='agv_base_link']")
     if base_link is None:
         raise RuntimeError("base_link was not found in URDF")
 
@@ -150,11 +150,14 @@ def generate_launch_description():
     robot_state_publisher_cmd = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        name='robot_state_publisher',
+        name='agv_robot_state_publisher',
         output='screen',
         parameters=[
             {'use_sim_time': use_sim_time},
             {'robot_description': robot_description_content},
+        ],
+        remappings=[
+            ('robot_description', '/agv/robot_description'),
         ],
     )
 
@@ -164,6 +167,78 @@ def generate_launch_description():
         name='robot_agent',
         output='screen',
         emulate_tty=True,
+    )
+
+    # Beckhoff ADS driver
+    #
+    # Verified network / ADS configuration:
+    #   Jetson IP        : 192.168.0.50
+    #   Local AMS Net ID : 192.168.0.50.1.2
+    #   Beckhoff IP      : 192.168.0.20
+    #   Remote AMS Net ID: 192.168.0.20.1.1
+    #   PLC ADS port     : 851
+    #
+    # Axis mapping confirmed by vendor:
+    #   Axis 1 / 2 = drive wheels
+    #   Axis 3     = rail motor
+    #
+    # Wheel dimensions:
+    #   diameter            = 0.206 m
+    #   center-to-center    = 0.804 m
+    #
+    # NOTE:
+    # left/right physical Axis 1/2 mapping and direction signs still
+    # need one low-speed field test. If one side runs opposite,
+    # change only the corresponding *_wheel_sign to -1.0.
+    agv_ads_driver_cmd = Node(
+        package='agv_ads_driver',
+        executable='agv_node',
+        name='agv_ads_driver',
+        output='screen',
+        parameters=[
+            {
+                # Real Beckhoff ADS mode
+                'mock_mode': False,
+
+                # Axis mapping
+                'left_wheel_axis': 1,
+                'right_wheel_axis': 2,
+                'rail_axis': 3,
+
+                # ROS positive-direction correction
+                'left_wheel_sign': 1.0,
+                'right_wheel_sign': 1.0,
+                'rail_sign': 1.0,
+
+                # Actual drive-wheel geometry
+                'wheel_separation_m': 0.804,
+                'wheel_diameter_m': 0.206,
+
+                # ROS m/s -> Beckhoff mm/s
+                'velocity_scale': 1000.0,
+
+                # Beckhoff MoveVelocity parameters
+                'wheel_ramp_ms': 1000.0,
+                'rail_ramp_ms': 1000.0,
+                'jerk_percent': 100.0,
+
+                # Command watchdogs
+                'cmd_vel_timeout_sec': 0.5,
+                'rail_cmd_timeout_sec': 1.0,
+
+                # Do not resend nearly-identical velocity commands
+                'wheel_command_epsilon_mps': 0.005,
+                'rail_command_epsilon_mps': 0.001,
+
+                # Normal bringup: enable axes once at startup,
+                # stop + power-disable them during driver shutdown.
+                'power_enable_on_start': True,
+                'power_disable_on_shutdown': True,
+
+                # Suppress repetitive normal-motion logs.
+                'log_motion_commands': False,
+            }
+        ],
     )
 
     # Intel RealSense D435 driver.
@@ -274,5 +349,7 @@ def generate_launch_description():
     #launch_description.add_action(realsense_cmd)
     # launch_description.add_action(rgbd_odometry_cmd)  # RTAB odometry disabled
     launch_description.add_action(ekf_cmd)
+    launch_description.add_action(agv_ads_driver_cmd)
+
 
     return launch_description

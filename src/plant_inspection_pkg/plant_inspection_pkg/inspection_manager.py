@@ -12,7 +12,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from plant_inspection_pkg.environment_client import RandomEnvironmentClient
+from plant_inspection_pkg.environment_client import EnvironmentClient
 from plant_inspection_pkg.models import (
     Capture,
     FilePayload,
@@ -24,6 +24,7 @@ from plant_inspection_pkg.models import (
 from plant_inspection_pkg.pending_queue import PendingQueue
 from plant_inspection_pkg.realsense_camera import RealSenseD435iCamera
 from plant_inspection_pkg.robot_client import RobotArmClient
+from plant_inspection_pkg.side_scan import SideScan
 from plant_inspection_pkg.uploader import UploadError, Uploader
 
 
@@ -50,7 +51,7 @@ class InspectionManager(Node):
         super().__init__("inspection_manager")
         self.declare_parameter("auto_start", False)
         self.declare_parameter("dry_run", False)
-        self.declare_parameter("upload_url", "http://192.168.0.10:8080/api/v1/inspections")
+        self.declare_parameter("upload_url", "http://192.168.0.72:8080/api/v1/inspections")
         self.declare_parameter("pending_dir", "/tmp/plant_inspection_pending")
         self.declare_parameter("region", "sj")
         self.declare_parameter("device_number", 1)
@@ -141,7 +142,7 @@ class InspectionManager(Node):
             ),
             logger=self.get_logger(),
         )
-        self.environment_client = RandomEnvironmentClient()
+        self.environment_client = EnvironmentClient(self)
         self.pending_queue = PendingQueue(pending_dir)
         self.uploader = Uploader(upload_url)
         self.robot = RobotArmClient(
@@ -155,6 +156,7 @@ class InspectionManager(Node):
             trajectory_time_sec=float(self.get_parameter("trajectory_time_sec").value),
         )
 
+        self.side_scan = SideScan(self, self.camera)
         self._busy = False
         self._busy_lock = threading.Lock()
         self._arm_command_callback_group = ReentrantCallbackGroup()
@@ -196,6 +198,12 @@ class InspectionManager(Node):
         )
 
     def _handle_start_inspection_goal(self, goal_request):
+        if goal_request.side not in ("", "left", "right"):
+            self.get_logger().warning("Rejecting inspection: side must be left or right")
+            return GoalResponse.REJECT
+        if goal_request.side and bool(self.get_parameter("dry_run").value):
+            self.get_logger().warning("Side scan is disabled in dry_run mode")
+            return GoalResponse.REJECT
         with self._busy_lock:
             if self._busy:
                 self.get_logger().warning(
@@ -220,6 +228,7 @@ class InspectionManager(Node):
             inspection, files = self.perform_inspection(
                 location=location,
                 feedback_publisher=goal_handle.publish_feedback,
+                side=goal.side,
             )
             upload_success, upload_message = self.upload_or_queue(inspection, files)
             goal_handle.succeed()
@@ -347,7 +356,7 @@ class InspectionManager(Node):
         finally:
             self.get_logger().info("Inspection manager cycle finished.")
 
-    def perform_inspection(self, location=None, feedback_publisher=None):
+    def perform_inspection(self, location=None, feedback_publisher=None, side=""):
         if location is None:
             location = Location(
                 region=str(self.get_parameter("region").value),
@@ -366,6 +375,9 @@ class InspectionManager(Node):
         )
 
         files: List[FilePayload] = []
+        if side:
+            self.side_scan.run(side, inspection, files, feedback_publisher)
+            return inspection, files
         viewpoints = self._viewpoints()
         total_captures = len(viewpoints)
         for index, viewpoint_id in enumerate(viewpoints):

@@ -40,7 +40,7 @@ FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 CAMERA_FPS = 15
 
-FRAME_ID = 'camera_color_optical_frame'
+FRAME_ID = 'agv_camera_color_optical_frame'
 
 # 이 노드가 사용할 RealSense 카메라를 serial로 고정한다.
 REALSENSE_SERIAL = '244622071272'

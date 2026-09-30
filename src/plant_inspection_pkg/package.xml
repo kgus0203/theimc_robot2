@@ -9,8 +9,10 @@
 
   <depend>rclpy</depend>
   <depend>interfaces_pkg</depend>
+  <depend>fairino_waypoint_test</depend>
   <depend>control_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>trajectory_msgs</depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

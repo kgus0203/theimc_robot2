@@ -2,6 +2,8 @@ string region
 int32 device_number
 int32 bed_id
 int32 hole_id
+# Empty keeps the legacy growth-stage inspection; otherwise left or right.
+string side
 ---
 bool success
 string inspection_id
