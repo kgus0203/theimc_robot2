@@ -25,12 +25,16 @@ def generate_launch_description():
         DeclareLaunchArgument("wall_width", default_value="1.0"),
         DeclareLaunchArgument("wall_height", default_value="1.0"),
         DeclareLaunchArgument("connection_timeout", default_value="30.0"),
-        DeclareLaunchArgument("velocity_scale", default_value="0.1"),
-        DeclareLaunchArgument("acceleration_scale", default_value="0.1"),
+        DeclareLaunchArgument("velocity_scale", default_value="0.08"),
+        DeclareLaunchArgument("acceleration_scale", default_value="0.03"),
+        DeclareLaunchArgument("waypoint_limit", default_value="0"),
     ]
     params = {name: ParameterValue(LaunchConfiguration(name), value_type=float)
               for name in ("wall_distance", "wall_thickness", "wall_width", "wall_height",
                            "connection_timeout", "velocity_scale", "acceleration_scale")}
+    params["waypoint_limit"] = ParameterValue(
+        LaunchConfiguration("waypoint_limit"), value_type=int
+    )
     return LaunchDescription(args + [
         SetRemap(src='/joint_states', dst='/arm/joint_states'),
         LogInfo(msg=["start_demo=", LaunchConfiguration("start_demo"),

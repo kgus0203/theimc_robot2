@@ -157,6 +157,8 @@ class BringUp(Node):
         # that the rail motor has actually stopped.
         self.pending_reverse_command = None
         self.last_measured_rail_velocity = 0.0
+        self.variable_rail_speed_mode = False
+        self.variable_rail_speed_setpoint = 0.0
 
         # Rail motor is allowed only while physically on the rail.
         # ENTERING is intentionally excluded: entry motion should not
@@ -195,6 +197,13 @@ class BringUp(Node):
             String,
             '/rail_command',
             self.cb_rail_cmd_msg,
+            qos_profile,
+        )
+
+        self.sub_rail_speed_setpoint = self.create_subscription(
+            Float32,
+            '/rail_speed_setpoint',
+            self.cb_rail_speed_setpoint,
             qos_profile,
         )
 
@@ -466,6 +475,8 @@ class BringUp(Node):
     # ============================================================
     def cb_rail_cmd_msg(self, msg):
         command = msg.data.strip().upper()
+        self.variable_rail_speed_mode = False
+        self.variable_rail_speed_setpoint = 0.0
 
         if command not in ('FORWARD', 'BACK', 'STOP'):
             self.get_logger().warning(
@@ -535,6 +546,117 @@ class BringUp(Node):
         self.last_rail_motion_direction = command
         self._reevaluate_rail_command(reason='new command')
 
+    def cb_rail_speed_setpoint(self, msg):
+        speed = float(msg.data)
+
+        if not math.isfinite(speed):
+            self.get_logger().warning(
+                f'Invalid rail speed setpoint: {speed}'
+            )
+            return
+
+        speed = max(
+            -self.rail_back_speed if self.rail_back_speed > 0.0 else -0.5,
+            min(
+                self.rail_forward_speed if self.rail_forward_speed > 0.0 else 0.5,
+                speed,
+            ),
+        )
+
+        # Allow teleop step control up to +/-0.5 m/s independently of
+        # the fixed FORWARD/BACK parameter values.
+        speed = max(-0.5, min(0.5, float(msg.data)))
+
+        self.variable_rail_speed_mode = True
+        self.variable_rail_speed_setpoint = speed
+
+        if abs(speed) < 1.0e-6:
+            self.pending_reverse_command = None
+            self.requested_rail_command = 'STOP'
+            self._set_effective_rail_speed(
+                0.0,
+                reason='rail speed setpoint STOP',
+            )
+            return
+
+        command = 'FORWARD' if speed > 0.0 else 'BACK'
+        self.requested_rail_command = command
+
+        # Respect the same direction-reversal safety rule.
+        current_direction = 'STOP'
+        if self.last_measured_rail_velocity > self.rail_reverse_stop_threshold_mps:
+            current_direction = 'FORWARD'
+        elif self.last_measured_rail_velocity < -self.rail_reverse_stop_threshold_mps:
+            current_direction = 'BACK'
+        elif self.effective_rail_command in ('FORWARD', 'BACK'):
+            current_direction = self.effective_rail_command
+
+        if current_direction in ('FORWARD', 'BACK') and current_direction != command:
+            self.pending_reverse_command = command
+            self._set_effective_rail_speed(
+                0.0,
+                reason=f'reverse interlock before {command}',
+            )
+            return
+
+        self.pending_reverse_command = None
+        self.last_rail_motion_direction = command
+
+        if self.rail_state not in self.rail_motor_allowed_states:
+            self._set_effective_rail_speed(
+                0.0,
+                reason=f'{command} blocked in rail_state={self.rail_state}',
+            )
+            return
+
+        if command == 'FORWARD' and self.rail_end_reached:
+            self._set_effective_rail_speed(
+                0.0,
+                reason='FORWARD blocked by rail end',
+            )
+            return
+
+        if self._obstacle_for_direction(command):
+            self.obstacle_stop_latched = True
+            self._set_effective_rail_speed(
+                0.0,
+                reason=f'{command} blocked by obstacle',
+            )
+            return
+
+        self.obstacle_stop_latched = False
+        self._set_effective_rail_speed(
+            speed,
+            reason='rail speed setpoint',
+        )
+
+    def _set_effective_rail_speed(self, speed, reason=''):
+        speed = float(speed)
+
+        if speed > 0.0:
+            command = 'FORWARD'
+        elif speed < 0.0:
+            command = 'BACK'
+        else:
+            command = 'STOP'
+            speed = 0.0
+
+        changed = (
+            command != self.effective_rail_command or
+            abs(speed - self.effective_rail_speed) > 1.0e-9
+        )
+
+        self.effective_rail_command = command
+        self.effective_rail_speed = speed
+
+        if changed:
+            self.publish_rail_command_state(command)
+            self._publish_rail_speed_command(speed)
+            suffix = f' ({reason})' if reason else ''
+            self.get_logger().info(
+                f'[RAIL SPEED] {command} -> {speed:+.3f} m/s{suffix}'
+            )
+
     def cb_rail_state_msg(self, msg):
         rail_state = msg.data.strip().upper()
 
@@ -566,6 +688,8 @@ class BringUp(Node):
 
         if rail_state == 'OUT_RAIL':
             # Immediate rail motor stop + rail odometry reset.
+            self.variable_rail_speed_mode = False
+            self.variable_rail_speed_setpoint = 0.0
             self.pending_reverse_command = None
             self.requested_rail_command = 'STOP'
             self._set_effective_rail_command(
@@ -914,10 +1038,45 @@ class BringUp(Node):
         ):
             self.set_rail_end_reached(False)
 
-        # A rail-end state change may block or resume FORWARD.
-        self._reevaluate_rail_command(
-            reason='rail feedback update'
-        )
+        # A rail-end / obstacle update may block or resume motion.
+        # In variable-speed mode, preserve the exact signed speed requested
+        # by t/b/g instead of remapping BACK/FORWARD to the fixed 0.2 m/s.
+        if self.variable_rail_speed_mode:
+            variable_speed = self.variable_rail_speed_setpoint
+
+            if abs(variable_speed) < 1.0e-6:
+                self._set_effective_rail_speed(
+                    0.0,
+                    reason='rail feedback update / variable STOP',
+                )
+            else:
+                variable_direction = (
+                    'FORWARD' if variable_speed > 0.0 else 'BACK'
+                )
+
+                blocked = False
+
+                if self.rail_state not in self.rail_motor_allowed_states:
+                    blocked = True
+                elif variable_direction == 'FORWARD' and self.rail_end_reached:
+                    blocked = True
+                elif self._obstacle_for_direction(variable_direction):
+                    blocked = True
+
+                if blocked:
+                    self._set_effective_rail_speed(
+                        0.0,
+                        reason='rail feedback update / variable speed blocked',
+                    )
+                else:
+                    self._set_effective_rail_speed(
+                        variable_speed,
+                        reason='rail feedback update / keep variable speed',
+                    )
+        else:
+            self._reevaluate_rail_command(
+                reason='rail feedback update'
+            )
 
         odom_velocity = (
             measured_velocity

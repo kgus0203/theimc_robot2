@@ -88,9 +88,12 @@ public:
       });
     const double speed = node->get_parameter("velocity_scale").as_double();
     const double accel = node->get_parameter("acceleration_scale").as_double();
+    waypoint_limit_ = node->get_parameter("waypoint_limit").as_int();
     if (!std::isfinite(speed) || speed <= 0 || speed > 1 ||
         !std::isfinite(accel) || accel <= 0 || accel > 1)
       throw std::runtime_error("Require velocity/acceleration scales in (0,1]");
+    if (waypoint_limit_ < 0 || waypoint_limit_ > 9)
+      throw std::runtime_error("waypoint_limit must be in [0,9] (0 means all)");
     group_.setMaxVelocityScalingFactor(speed);
     group_.setMaxAccelerationScalingFactor(accel);
     group_.setPlanningPipelineId("ompl");
@@ -256,8 +259,10 @@ private:
     message->side = goal_->get_goal()->side;
     message->stage = stage;
     message->completed_waypoints = completed_;
-    message->total_waypoints = goal_->get_goal()->side == "right" ? recorded::poses.size() :
+    const size_t available = goal_->get_goal()->side == "right" ? recorded::poses.size() :
       recorded::left_poses.size();
+    message->total_waypoints = waypoint_limit_ == 0 ? available :
+      std::min<size_t>(waypoint_limit_, available);
     goal_->publish_feedback(message);
   }
 
@@ -332,15 +337,18 @@ private:
   template <typename PoseList>
   void runRecorded(const PoseList& poses)
   {
+    const size_t total = waypoint_limit_ == 0 ? poses.size() :
+      std::min<size_t>(waypoint_limit_, poses.size());
     // Reject invalid input before moving; never clamp, wrap, or change limits.
-    for (const auto& pose : poses) {
+    for (size_t i = 0; i < total; ++i) {
+      const auto& pose = poses[i];
       state_.setVariablePositions(recorded::target(pose));
       state_.update();
       if (!state_.satisfiesBounds())
         throw std::runtime_error(std::string(pose.name) + ": joint limits exceeded");
     }
     markers_.markers.resize(3);
-    for (size_t i = 0; i < poses.size(); ++i) {
+    for (size_t i = 0; i < total; ++i) {
       const auto& pose = poses[i];
       state_.setVariablePositions(recorded::target(pose));
       state_.update();
@@ -348,7 +356,8 @@ private:
         state_.getGlobalLinkTransform("wrist3_link").translation(), 3 + i);
     }
     pub_->publish(markers_);
-    for (const auto& pose : poses) {
+    for (size_t i = 0; i < total; ++i) {
+      const auto& pose = poses[i];
       moveRecorded(pose);
       ++completed_;
       feedback(std::string("reached: ") + pose.name);
@@ -358,7 +367,7 @@ private:
         checkpoint();
         std::this_thread::sleep_for(50ms);
       }
-      if (capture_client_) captureWaypoint(pose.name, poses.size());
+      if (capture_client_) captureWaypoint(pose.name, total);
     }
   }
 
@@ -535,6 +544,7 @@ private:
   rclcpp_action::Server<Scan>::SharedPtr server_;
   std::shared_ptr<GoalHandle> goal_;
   uint32_t completed_{0};
+  int64_t waypoint_limit_{0};
   rclcpp::Node::SharedPtr node_;
   moveit::planning_interface::MoveGroupInterface group_;
   moveit::core::RobotState state_;
@@ -551,9 +561,10 @@ int main(int argc, char** argv)
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("fairino_waypoint_test",
     rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
-  if (!node->has_parameter("velocity_scale")) node->declare_parameter("velocity_scale", 0.1);
-  if (!node->has_parameter("acceleration_scale")) node->declare_parameter("acceleration_scale", 0.1);
+  if (!node->has_parameter("velocity_scale")) node->declare_parameter("velocity_scale", 0.08);
+  if (!node->has_parameter("acceleration_scale")) node->declare_parameter("acceleration_scale", 0.03);
   if (!node->has_parameter("connection_timeout")) node->declare_parameter("connection_timeout", 30.0);
+  if (!node->has_parameter("waypoint_limit")) node->declare_parameter("waypoint_limit", 0);
   for (const auto& parameter : std::map<std::string, double>{
       {"wall_distance", 0.5}, {"wall_thickness", 0.02}, {"wall_width", 1.0}, {"wall_height", 1.0}})
     if (!node->has_parameter(parameter.first)) node->declare_parameter(parameter.first, parameter.second);

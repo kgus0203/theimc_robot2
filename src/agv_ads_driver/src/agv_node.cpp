@@ -17,6 +17,7 @@
 #include "std_msgs/msg/float32_multi_array.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 
 // Vendor-provided Beckhoff wrapper API.
 #include "TcMCApi.h"
@@ -63,15 +64,15 @@ public:
     // Vendor confirmed:
     // ramp = milliseconds
     // jerk = 0..100 (% S-curve amount)
-    this->declare_parameter<double>("wheel_ramp_ms", 1000.0);
-    this->declare_parameter<double>("rail_ramp_ms", 1000.0);
+    this->declare_parameter<double>("wheel_ramp_ms", 700.0);
+    this->declare_parameter<double>("rail_ramp_ms", 700.0);
     // Rail Axis3 requires an explicit STOP before reversing direction.
     // After feedback reaches near-zero, keep STOP state for this additional hold time.
     this->declare_parameter<double>("rail_direction_stop_hold_ms", 200.0);
     this->declare_parameter<double>("jerk_percent", 100.0);
 
-    this->declare_parameter<double>("cmd_vel_timeout_sec", 5.0);
-    this->declare_parameter<double>("rail_cmd_timeout_sec", 5.0);
+    this->declare_parameter<double>("cmd_vel_timeout_sec", 10.0);
+    this->declare_parameter<double>("rail_cmd_timeout_sec", 10.0);
 
     // Avoid repeatedly sending nearly-identical MoveVelocity requests.
     this->declare_parameter<double>("wheel_command_epsilon_mps", 0.005);
@@ -107,7 +108,7 @@ public:
     // requested. Never PowerDisable a wheel that is still moving. When BUSY
     // occurs, keep power enabled, inhibit new motion, and retry STOP at a
     // bounded interval.
-    this->declare_parameter<double>("stop_retry_interval_ms", 250.0);
+    this->declare_parameter<double>("stop_retry_interval_ms", 1000.0);
     this->declare_parameter<double>("stop_wait_timeout_sec", 4.0);
     this->declare_parameter<double>("stopped_velocity_threshold_mps", 0.01);
 
@@ -251,6 +252,24 @@ public:
         std::placeholders::_1,
         std::placeholders::_2));
 
+    wheel_power_srv_ =
+      this->create_service<std_srvs::srv::SetBool>(
+      "/agv/wheel_power",
+      std::bind(
+        &AgvAdsDriver::wheel_power_callback,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
+    rail_power_srv_ =
+      this->create_service<std_srvs::srv::SetBool>(
+      "/agv/rail_power",
+      std::bind(
+        &AgvAdsDriver::rail_power_callback,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     last_cmd_vel_time_ = this->now();
     last_rail_cmd_time_ = this->now();
     last_feedback_time_ = this->now();
@@ -359,6 +378,7 @@ public:
         }
       }
 
+      axis_status_notification_registered_ = false;
       Disconnect();
       ads_connected_ = false;
 
@@ -498,6 +518,9 @@ private:
     right_waiting_for_stop_ = false;
     rail_waiting_for_stop_ = false;
     rail_stop_hold_active_ = false;
+    rail_stop_sequence_active_ = false;
+    rail_stop_tx_sent_ = false;
+    rail_stop_retry_wait_active_ = false;
   }
 
   void enter_safe_stop(const std::string & reason)
@@ -590,11 +613,12 @@ private:
       return StopRequestResult::RATE_LIMITED;
     }
 
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 250,
+      "[STOP TX] Axis%d context=%s",
+      axis, context);
+
     const int32_t result =
-      RCLCPP_INFO_THROTTLE(
-        this->get_logger(), *this->get_clock(), 250,
-        "[STOP TX] Axis%d context=%s",
-        axis, context);
       StopMove(
         static_cast<uint32_t>(axis),
         ramp_ms,
@@ -947,6 +971,22 @@ private:
 
     ads_connected_ = true;
     RCLCPP_INFO(this->get_logger(), "Connected to Beckhoff TwinCAT ADS.");
+
+    // Vendor-recommended mode:
+    // Do NOT poll ReadAxisStatus() from the ROS timer/thread.  Register the
+    // Beckhoff ADS notification once and use the asynchronously updated cache.
+    AxisStatus_Notification(&axis_status_notification_cache_);
+    axis_status_notification_registered_ = true;
+    axis_status_notification_registered_at_ = std::chrono::steady_clock::now();
+
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[ADS NOTIFY] AxisStatus notification registered: "
+      "MotionHandler.fbAxisHandler.starAxisStatus");
+
+    // The vendor sample waits while the notification updates axisStatusList.
+    // Give the first SERVERCYCLE samples time to arrive before startup checks.
+    std::this_thread::sleep_for(500ms);
 
     start_environment_sensor_notification();
 
@@ -1318,6 +1358,163 @@ private:
     }
   }
 
+  void wheel_power_callback(
+    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+    std::shared_ptr<std_srvs::srv::SetBool::Response> response)
+  {
+    if (request->data && (fault_latched_ || safe_stop_latched_)) {
+      response->success = false;
+      response->message =
+        "Wheel PowerEnable rejected: fault/safe-stop latch is active. "
+        "Call /agv/reset_faults first.";
+      return;
+    }
+
+    clear_motion_requests();
+    wheel_motion_armed_ = false;
+    rail_motion_armed_ = false;
+
+    if (mock_mode_) {
+      if (request->data) {
+        wheel_axes_enabled_ = true;
+        rail_axis_enabled_ = false;
+        response->message = "Mock: wheel power ON, rail power OFF.";
+      } else {
+        wheel_axes_enabled_ = false;
+        response->message = "Mock: wheel power OFF.";
+      }
+      response->success = true;
+      return;
+    }
+
+    if (!ads_connected_) {
+      response->success = false;
+      response->message = "ADS is not connected.";
+      return;
+    }
+
+    if (!wait_until_all_axes_stopped(stop_wait_timeout_sec_, "manual wheel power")) {
+      response->success = false;
+      response->message =
+        "Wheel power request aborted: one or more axes did not physically stop.";
+      return;
+    }
+
+    bool ok = true;
+
+    if (request->data) {
+      // Never allow wheel and rail servo power at the same time.
+      if (rail_axis_enabled_) {
+        ok = power_disable_axis(rail_axis_) && ok;
+      }
+
+      ok = power_enable_axis(left_wheel_axis_) && ok;
+      ok = power_enable_axis(right_wheel_axis_) && ok;
+
+      if (ok && wait_for_expected_power_state(true, false, 5.0)) {
+        wheel_axes_enabled_ = true;
+        rail_axis_enabled_ = false;
+        motion_ready_ = true;
+        response->success = true;
+        response->message = "Wheel power ON; rail power OFF.";
+      } else {
+        response->success = false;
+        response->message = "Wheel PowerEnable failed or feedback did not match.";
+      }
+      return;
+    }
+
+    ok = power_disable_axis(left_wheel_axis_) && ok;
+    ok = power_disable_axis(right_wheel_axis_) && ok;
+
+    if (ok) {
+      wheel_axes_enabled_ = false;
+      response->success = true;
+      response->message = "Wheel power OFF.";
+    } else {
+      response->success = false;
+      response->message = "One or more wheel PowerDisable calls failed.";
+    }
+  }
+
+  void rail_power_callback(
+    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+    std::shared_ptr<std_srvs::srv::SetBool::Response> response)
+  {
+    if (request->data && (fault_latched_ || safe_stop_latched_)) {
+      response->success = false;
+      response->message =
+        "Rail PowerEnable rejected: fault/safe-stop latch is active. "
+        "Call /agv/reset_faults first.";
+      return;
+    }
+
+    clear_motion_requests();
+    wheel_motion_armed_ = false;
+    rail_motion_armed_ = false;
+
+    if (mock_mode_) {
+      if (request->data) {
+        wheel_axes_enabled_ = false;
+        rail_axis_enabled_ = true;
+        response->message = "Mock: rail power ON, wheel power OFF.";
+      } else {
+        rail_axis_enabled_ = false;
+        response->message = "Mock: rail power OFF.";
+      }
+      response->success = true;
+      return;
+    }
+
+    if (!ads_connected_) {
+      response->success = false;
+      response->message = "ADS is not connected.";
+      return;
+    }
+
+    if (!wait_until_all_axes_stopped(stop_wait_timeout_sec_, "manual rail power")) {
+      response->success = false;
+      response->message =
+        "Rail power request aborted: one or more axes did not physically stop.";
+      return;
+    }
+
+    bool ok = true;
+
+    if (request->data) {
+      // Never allow wheel and rail servo power at the same time.
+      if (wheel_axes_enabled_) {
+        ok = power_disable_axis(left_wheel_axis_) && ok;
+        ok = power_disable_axis(right_wheel_axis_) && ok;
+      }
+
+      ok = power_enable_axis(rail_axis_) && ok;
+
+      if (ok && wait_for_expected_power_state(false, true, 5.0)) {
+        wheel_axes_enabled_ = false;
+        rail_axis_enabled_ = true;
+        motion_ready_ = true;
+        response->success = true;
+        response->message = "Rail power ON; wheel power OFF.";
+      } else {
+        response->success = false;
+        response->message = "Rail PowerEnable failed or feedback did not match.";
+      }
+      return;
+    }
+
+    ok = power_disable_axis(rail_axis_) && ok;
+
+    if (ok) {
+      rail_axis_enabled_ = false;
+      response->success = true;
+      response->message = "Rail power OFF.";
+    } else {
+      response->success = false;
+      response->message = "Rail PowerDisable failed.";
+    }
+  }
+
   void reset_faults_callback(
     const std::shared_ptr<std_srvs::srv::Trigger::Request>,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
@@ -1654,19 +1851,14 @@ private:
   // ============================================================
   bool read_axis_status(std::array<AxisStatus, 3> & status)
   {
-    const int32_t result =
-      ReadAxisStatus(status.data(), static_cast<uint32_t>(status.size()));
-
-    if (result != NO_ERR_TcMCFUN) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(),
-        *this->get_clock(),
-        2000,
-        "ReadAxisStatus failed: 0x%X",
-        static_cast<unsigned int>(result));
+    // V6: Notification only.  No ReadAxisStatus() ADS polling is performed.
+    // TcMCApi::AxisStatus_NotifyCallback() asynchronously memcpy()s the
+    // PLC starAxisStatus array into axis_status_notification_cache_.
+    if (!ads_connected_ || !axis_status_notification_registered_) {
       return false;
     }
 
+    status = axis_status_notification_cache_;
     return true;
   }
 
@@ -2043,87 +2235,272 @@ private:
     constexpr double kZeroMps = 1.0e-6;
     constexpr double kStoppedThresholdMps = 0.01;
 
-    // Rail Axis3 is stricter than the drive wheels:
-    //   FORWARD <-> BACK
-    //     1) StopMove()
-    //     2) wait until Beckhoff feedback is physically near zero
-    //     3) keep the rail stopped for rail_direction_stop_hold_ms
-    //     4) issue MoveVelocity() in the newest requested direction
+    // ---------------------------------------------------------------------
+    // Axis3 rail STOP policy (vendor callback/notification style)
     //
-    // This reproduces the manual FORWARD -> STOP -> BACK sequence
-    // automatically inside the low-level driver.
-    if (rail_waiting_for_stop_) {
-      // Always retain the newest command received while stopping.
+    // 1) AxisStatus is read ONLY from the ADS Notification cache.
+    // 2) Do not overlap StopMove with the MoveVelocity ramp.
+    // 3) Send StopMove(Axis3) once after the ramp window is clear.
+    // 4) After StopMove is accepted, do NOT retransmit it every control cycle.
+    //    Wait for Notification bNotMoving + near-zero actual velocity.
+    // 5) Explicit STOP (g / 0.0 m/s) affects Axis3 only.
+    // 6) Direction reversal uses the same Axis3-only STOP sequence, then
+    //    waits rail_direction_stop_hold_ms before the opposite MoveVelocity.
+    // ---------------------------------------------------------------------
+
+    std::array<AxisStatus, 3> status{};
+    bool rail_b_not_moving = false;
+    if (read_axis_status(status)) {
+      const auto & rail_status =
+        status[static_cast<std::size_t>(rail_axis_ - 1)];
+      rail_b_not_moving = rail_status.bNotMoving;
+    }
+
+    const bool rail_physically_stopped =
+      rail_b_not_moving &&
+      std::fabs(actual_rail_mps_) <= kStoppedThresholdMps;
+
+    const auto now_tp = std::chrono::steady_clock::now();
+
+    // If a rail STOP sequence is active, keep the newest desired target.
+    if (rail_stop_sequence_active_) {
       rail_pending_target_mps_ = rail_target_mps;
 
-      // Explicit STOP or watchdog while reversing cancels pending motion.
+      // Explicit STOP must cancel a pending reverse/restart.
       if (std::fabs(rail_target_mps) <= kZeroMps) {
         rail_pending_target_mps_ = 0.0;
-        rail_waiting_for_stop_ = false;
-        rail_stop_hold_active_ = false;
-        applied_rail_mps_ = 0.0;
-        return;
       }
 
-      // Do not start the hold timer until Axis3 has actually stopped.
-      if (std::fabs(actual_rail_mps_) > kStoppedThresholdMps) {
-        rail_stop_hold_active_ = false;
-        return;
-      }
+      // ------------------------------------------------------------
+      // A) StopMove has not been accepted yet.
+      //    Respect the MoveVelocity ramp timing before issuing StopMove.
+      // ------------------------------------------------------------
+      if (!rail_stop_tx_sent_) {
+        bool move_ramp_complete = true;
 
-      const auto now = this->now();
+        if (rail_last_move_tx_initialized_) {
+          const double elapsed_ms =
+            std::chrono::duration<double, std::milli>(
+              now_tp - rail_last_move_tx_tp_).count();
 
-      if (!rail_stop_hold_active_) {
-        rail_stop_hold_active_ = true;
-        rail_zero_hold_start_ = now;
+          move_ramp_complete = elapsed_ms >= rail_ramp_ms_;
+        }
 
-        if (log_motion_commands_) {
+        // If the previous StopMove attempt returned BUSY, wait at least one
+        // rail ramp interval before trying again.  This avoids repeatedly
+        // colliding with an active MC command.
+        if (rail_stop_retry_wait_active_) {
+          const double retry_wait_ms =
+            std::chrono::duration<double, std::milli>(
+              now_tp - rail_stop_retry_wait_start_tp_).count();
+
+          if (retry_wait_ms < rail_ramp_ms_) {
+            return;
+          }
+
+          rail_stop_retry_wait_active_ = false;
+        }
+
+        if (!move_ramp_complete) {
+          return;
+        }
+
+        RCLCPP_INFO(
+          this->get_logger(),
+          "[RAIL STOP TX] Axis%d ramp=%.0f ms pending_target=%+.3f m/s",
+          rail_axis_,
+          rail_ramp_ms_,
+          rail_pending_target_mps_);
+
+        // IMPORTANT: g/STOP only calls StopMove for Axis3.
+        const int32_t result =
+          StopMove(
+            static_cast<uint32_t>(rail_axis_),
+            rail_ramp_ms_,
+            jerk_percent_);
+
+        if (result == NO_ERR_TcMCFUN) {
+          rail_stop_tx_sent_ = true;
+          rail_stop_tx_tp_ = now_tp;
+
           RCLCPP_INFO(
             this->get_logger(),
-            "[RAIL] Axis%d zero velocity confirmed; holding STOP for %.0f ms",
-            rail_axis_,
-            rail_direction_stop_hold_ms_);
+            "[RAIL STOP] Axis%d StopMove accepted; waiting for "
+            "AxisStatus Notification bNotMoving",
+            rail_axis_);
+
+          return;
         }
+
+        if (is_ads_device_busy(result)) {
+          rail_stop_retry_wait_active_ = true;
+          rail_stop_retry_wait_start_tp_ = now_tp;
+
+          RCLCPP_WARN(
+            this->get_logger(),
+            "[RAIL STOP] Axis%d StopMove BUSY (0x98110708). "
+            "Will not spam StopMove; retry after rail ramp %.0f ms.",
+            rail_axis_,
+            rail_ramp_ms_);
+          return;
+        }
+
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "[RAIL STOP] Axis%d StopMove failed: 0x%X",
+          rail_axis_,
+          static_cast<unsigned int>(result));
+        return;
+      }
+
+      // ------------------------------------------------------------
+      // B) StopMove was accepted.
+      //    From here, use Notification only.  Do not send StopMove again.
+      // ------------------------------------------------------------
+      if (!rail_physically_stopped) {
+        return;
+      }
+
+      applied_rail_mps_ = 0.0;
+      rail_stop_tx_sent_ = false;
+      rail_stop_retry_wait_active_ = false;
+
+      // Explicit g/STOP: remain stopped.  No wheel StopMove is issued.
+      if (std::fabs(rail_pending_target_mps_) <= kZeroMps) {
+        rail_stop_sequence_active_ = false;
+        rail_waiting_for_stop_ = false;
+        rail_stop_hold_active_ = false;
+
+        RCLCPP_INFO(
+          this->get_logger(),
+          "[RAIL STOP] Axis%d stopped confirmed by Notification.",
+          rail_axis_);
+        return;
+      }
+
+      // Direction reversal: once notification confirms zero, start the
+      // vendor-requested STOP hold before the opposite MoveVelocity.
+      if (!rail_stop_hold_active_) {
+        rail_stop_hold_active_ = true;
+        rail_zero_hold_start_ = this->now();
+
+        RCLCPP_INFO(
+          this->get_logger(),
+          "[RAIL] Axis%d bNotMoving confirmed; holding STOP for %.0f ms",
+          rail_axis_,
+          rail_direction_stop_hold_ms_);
         return;
       }
 
       const double hold_elapsed_ms =
-        (now - rail_zero_hold_start_).seconds() * 1000.0;
+        (this->now() - rail_zero_hold_start_).seconds() * 1000.0;
 
       if (hold_elapsed_ms < rail_direction_stop_hold_ms_) {
         return;
       }
 
-      // STOP sequence is complete. Use the newest pending target.
       rail_target_mps = rail_pending_target_mps_;
       rail_pending_target_mps_ = 0.0;
+      rail_stop_sequence_active_ = false;
       rail_waiting_for_stop_ = false;
       rail_stop_hold_active_ = false;
       applied_rail_mps_ = 0.0;
 
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[RAIL] Axis%d STOP sequence complete; target=%+.3f m/s",
+        rail_axis_,
+        rail_target_mps);
+    }
+
+    // ---------------------------------------------------------------------
+    // New explicit STOP request.
+    // If the rail is already stopped, nothing needs to be sent.
+    // ---------------------------------------------------------------------
+    if (std::fabs(rail_target_mps) <= kZeroMps) {
+      rail_pending_target_mps_ = 0.0;
+
+      if (
+        std::fabs(applied_rail_mps_) <= kZeroMps &&
+        rail_physically_stopped)
+      {
+        applied_rail_mps_ = 0.0;
+        return;
+      }
+
+      rail_stop_sequence_active_ = true;
+      rail_waiting_for_stop_ = true;
+      rail_stop_tx_sent_ = false;
+      rail_stop_retry_wait_active_ = false;
+      return;
+    }
+
+    // ---------------------------------------------------------------------
+    // Direction reversal: Axis3 STOP first.
+    // ---------------------------------------------------------------------
+    if (
+      std::fabs(applied_rail_mps_) > kZeroMps &&
+      rail_target_mps * applied_rail_mps_ < 0.0)
+    {
+      rail_pending_target_mps_ = rail_target_mps;
+      rail_stop_sequence_active_ = true;
+      rail_waiting_for_stop_ = true;
+      rail_stop_tx_sent_ = false;
+      rail_stop_retry_wait_active_ = false;
+      rail_stop_hold_active_ = false;
+      return;
+    }
+
+    // Same requested speed -> no new ADS command.
+    if (
+      std::fabs(rail_target_mps - applied_rail_mps_) <=
+      rail_command_epsilon_mps_)
+    {
+      return;
+    }
+
+    // New non-zero Axis3 MoveVelocity.
+    const double plc_velocity_mmps =
+      rail_target_mps * velocity_scale_ * rail_sign_;
+
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[MOVE TX] Axis%d target=%+.1f mm/s",
+      rail_axis_,
+      plc_velocity_mmps);
+
+    const int32_t result =
+      MoveVelocity(
+        static_cast<uint32_t>(rail_axis_),
+        plc_velocity_mmps,
+        rail_ramp_ms_,
+        jerk_percent_);
+
+    if (result == NO_ERR_TcMCFUN) {
+      applied_rail_mps_ = rail_target_mps;
+      rail_last_move_tx_tp_ = now_tp;
+      rail_last_move_tx_initialized_ = true;
+
       if (log_motion_commands_) {
         RCLCPP_INFO(
           this->get_logger(),
-          "[RAIL] Axis%d STOP hold complete; reverse command may start",
-          rail_axis_);
+          "[RAIL] Axis%d velocity=%+.1f mm/s (ROS=%+.3f m/s)",
+          rail_axis_,
+          plc_velocity_mmps,
+          rail_target_mps);
       }
-    }
-
-    const bool was_waiting_for_stop = rail_waiting_for_stop_;
-
-    apply_single_axis_velocity(
-      rail_axis_, rail_target_mps, rail_sign_,
-      rail_ramp_ms_, rail_command_epsilon_mps_,
-      applied_rail_mps_, actual_rail_mps_,
-      rail_waiting_for_stop_, rail_pending_target_mps_, "RAIL");
-
-    // apply_single_axis_velocity() detected a new direction reversal and
-    // issued StopMove(). The extra rail hold must start only after actual
-    // velocity later reaches the near-zero threshold.
-    if (!was_waiting_for_stop && rail_waiting_for_stop_) {
-      rail_stop_hold_active_ = false;
+    } else {
+      RCLCPP_ERROR_THROTTLE(
+        this->get_logger(),
+        *this->get_clock(),
+        2000,
+        "[RAIL] MoveVelocity(Axis%d, %+.1f mm/s) failed: 0x%X",
+        rail_axis_,
+        plc_velocity_mmps,
+        static_cast<unsigned int>(result));
     }
   }
+
 
   void apply_single_axis_velocity(
     int axis,
@@ -2267,27 +2644,27 @@ private:
       velocity_scale_ *
       sign;
 
+    // V6 final TX safety gate.
+    // Re-check immediately before the vendor ADS call. A fault/latch can
+    // be raised after the upper-level command path was entered.
+    if (fault_latched_ || safe_stop_latched_ || !motion_ready_ || wheel_stop_pending_) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 1000,
+        "[MOVE BLOCKED] Axis%d target=%+.3f m/s fault=%d latch=%d ready=%d stop_pending=%d",
+        axis, target_mps,
+        fault_latched_ ? 1 : 0,
+        safe_stop_latched_ ? 1 : 0,
+        motion_ready_ ? 1 : 0,
+        wheel_stop_pending_ ? 1 : 0);
+      return;
+    }
+
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[MOVE TX] Axis%d target=%+.1f mm/s",
+      axis, plc_velocity_mmps);
+
     const int32_t result =
-      // V5 final TX safety gate.
-      // Re-check immediately before the vendor ADS call.  A fault/latch can
-      // be raised after the upper-level command path was entered.
-      if (fault_latched_ || safe_stop_latched_ || !motion_ready_ || wheel_stop_pending_) {
-        RCLCPP_WARN_THROTTLE(
-          this->get_logger(), *this->get_clock(), 1000,
-          "[MOVE BLOCKED] Axis%d target=%+.3f m/s fault=%d latch=%d ready=%d stop_pending=%d",
-          axis, target_mps,
-          fault_latched_ ? 1 : 0,
-          safe_stop_latched_ ? 1 : 0,
-          motion_ready_ ? 1 : 0,
-          wheel_stop_pending_ ? 1 : 0);
-        return;
-      }
-
-      RCLCPP_INFO(
-        this->get_logger(),
-        "[MOVE TX] Axis%d target=%+.1f mm/s",
-        axis, target_mps * velocity_scale_ * direction_sign);
-
       MoveVelocity(
         static_cast<uint32_t>(axis),
         plc_velocity_mmps,
@@ -2554,8 +2931,8 @@ private:
   double rail_direction_stop_hold_ms_{200.0};
   double jerk_percent_{100.0};
 
-  double cmd_vel_timeout_sec_{5.0};
-  double rail_cmd_timeout_sec_{5.0};
+  double cmd_vel_timeout_sec_{10.0};
+  double rail_cmd_timeout_sec_{10.0};
 
   double wheel_command_epsilon_mps_{0.005};
   double wheel_move_command_min_interval_ms_{100.0};
@@ -2576,7 +2953,7 @@ private:
   bool environment_notification_registered_{false};
   SensorInfo environment_sensor_data_{};
 
-  double stop_retry_interval_ms_{250.0};
+  double stop_retry_interval_ms_{1000.0};
   double stop_wait_timeout_sec_{4.0};
   double stopped_velocity_threshold_mps_{0.01};
 
@@ -2588,6 +2965,12 @@ private:
 
   bool wheel_stop_pending_{false};
   std::chrono::steady_clock::time_point wheel_stop_pending_since_{};
+
+  // Beckhoff ADS Notification cache. Registered once after Connect().
+  // This replaces periodic ReadAxisStatus() polling.
+  std::array<AxisStatus, 3> axis_status_notification_cache_{};
+  bool axis_status_notification_registered_{false};
+  std::chrono::steady_clock::time_point axis_status_notification_registered_at_{};
 
   bool axis_state_initialized_{false};
   bool prev_left_ready_{false};
@@ -2618,6 +3001,18 @@ private:
   bool right_waiting_for_stop_{false};
   bool rail_waiting_for_stop_{false};
   bool rail_stop_hold_active_{false};
+
+  // Axis3 STOP state machine.
+  // Stop completion is driven by AxisStatus Notification (bNotMoving), not
+  // synchronous ADS polling and not periodic StopMove retransmission.
+  bool rail_stop_sequence_active_{false};
+  bool rail_stop_tx_sent_{false};
+  bool rail_stop_retry_wait_active_{false};
+  bool rail_last_move_tx_initialized_{false};
+
+  std::chrono::steady_clock::time_point rail_last_move_tx_tp_{};
+  std::chrono::steady_clock::time_point rail_stop_tx_tp_{};
+  std::chrono::steady_clock::time_point rail_stop_retry_wait_start_tp_{};
 
   double left_pending_target_mps_{0.0};
   double right_pending_target_mps_{0.0};
@@ -2669,6 +3064,8 @@ private:
     environment_co2_pub_;
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_faults_srv_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr wheel_power_srv_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr rail_power_srv_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
@@ -2685,7 +3082,7 @@ int main(int argc, char ** argv)
       rclcpp::get_logger("agv_ads_driver"),
       "Fatal error: %s",
       e.what());
-  }
+  } 
 
   rclcpp::shutdown();
   return 0;

@@ -218,13 +218,13 @@ def generate_launch_description():
                 'velocity_scale': 1000.0,
 
                 # Beckhoff MoveVelocity parameters
-                'wheel_ramp_ms': 1000.0,
-                'rail_ramp_ms': 1000.0,
+                'wheel_ramp_ms': 700.0,
+                'rail_ramp_ms': 700.0,
                 'jerk_percent': 100.0,
 
                 # Command watchdogs
-                'cmd_vel_timeout_sec': 0.5,
-                'rail_cmd_timeout_sec': 1.0,
+                'cmd_vel_timeout_sec': 10.0,
+                'rail_cmd_timeout_sec': 10.0,
 
                 # Do not resend nearly-identical velocity commands
                 'wheel_command_epsilon_mps': 0.005,
