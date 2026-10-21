@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fairino 로봇 제어 진단 및 속도 시험 보고서 — 2026-10-16</title>
+  <style>
+    :root { --ink:#172033; --muted:#5f6b7a; --line:#dfe5ec; --blue:#2563eb;
+      --cyan:#0891b2; --green:#16845b; --red:#dc3545; --amber:#c27a0a; --panel:#f7f9fc; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#eef2f7;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif; line-height:1.65; }
+    main { max-width:1080px; margin:32px auto; padding:48px 56px; background:white;
+      box-shadow:0 10px 35px rgba(22,34,51,.08); border-radius:16px; }
+    h1 { margin:0 0 8px; font-size:34px; line-height:1.25; letter-spacing:-.03em; }
+    h2 { margin:46px 0 16px; padding-bottom:8px; font-size:23px; border-bottom:2px solid var(--line); }
+    h3 { margin:26px 0 10px; font-size:18px; }
+    p { margin:9px 0; } .muted { color:var(--muted); }
+    .lead { font-size:18px; color:#334155; }
+    .summary { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:26px 0; }
+    .card { padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+    .card strong { display:block; font-size:25px; color:var(--blue); }
+    .card span { color:var(--muted); font-size:13px; }
+    .ok { color:var(--green); font-weight:700; } .bad { color:var(--red); font-weight:700; }
+    .callout { margin:18px 0; padding:16px 18px; border-left:5px solid var(--blue);
+      background:#eff6ff; border-radius:6px; }
+    .warn { border-color:var(--amber); background:#fff8e8; }
+    table { width:100%; border-collapse:collapse; margin:14px 0 22px; font-size:14px; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; }
+    th { background:#f1f5f9; } td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+    code { padding:2px 5px; border-radius:5px; background:#f1f5f9; color:#1e3a5f; }
+    pre { overflow:auto; padding:16px; border-radius:10px; color:#dbeafe; background:#111827; line-height:1.5; }
+    pre code { padding:0; color:inherit; background:none; }
+    ul,ol { padding-left:24px; } li { margin:5px 0; }
+    figure { margin:24px 0; padding:18px; border:1px solid var(--line); border-radius:12px; background:white; }
+    figcaption { margin-top:10px; color:var(--muted); font-size:13px; }
+    svg { width:100%; height:auto; display:block; }
+    .axis { stroke:#9aa6b2; stroke-width:1; } .grid { stroke:#e5eaf0; stroke-width:1; }
+    .label { fill:#536273; font-size:12px; } .value { fill:#172033; font-size:12px; font-weight:700; }
+    .small { font-size:13px; } .path { overflow-wrap:anywhere; font-family:monospace; }
+    footer { margin-top:46px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+    @media (max-width:760px) { main{margin:0;padding:28px 20px;border-radius:0}.summary{grid-template-columns:1fr 1fr} }
+    @media print { body{background:white} main{margin:0;max-width:none;box-shadow:none;padding:20px} }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="muted">실험일 2026-10-16 · ROS 2 Humble · FAIRINO FR5</div>
+    <h1>Fairino 로봇 제어 지연 진단 및 속도 시험 보고서</h1>
+    <p class="lead">간헐적으로 발생하던 경로 허용 오차 초과를 재현하고 원인을 명령 큐 누적으로 확정한 뒤,
+      ServoJ 전송 주기를 수정하고 실제 로봇에서 반복 검증했다.</p>
+  </header>
+
+  <section class="summary">
+    <div class="card"><strong>0.200028 rad</strong><span>수정 전 재현된 J5 오차</span></div>
+    <div class="card"><strong>0.017985 rad</strong><span>수정 후 6포인트 시험 최대 오차</span></div>
+    <div class="card"><strong>15 / 15</strong><span>속도 단계별 반복 성공</span></div>
+    <div class="card"><strong>0.12 / 0.03</strong><span>권장 운영 속도 / 가속도</span></div>
+  </section>
+
+  <h2>1. 문제와 증상</h2>
+  <p>MoveIt은 계획과 실행을 성공 처리하는 경우가 많았지만, 반복 운전 중 실제 로봇의 관절 피드백이
+    ROS 명령을 점점 늦게 따라가다가 다음 오류로 궤적이 중단됐다.</p>
+  <pre><code>State tolerances failed for joint 4
+Position Error: -0.200028, Position Tolerance: 0.200000
+PATH_TOLERANCE_VIOLATED
+... 0.743초 후 ...
+ServoJ rejected (SDK code 14), robot alarm main=0, sub=0</code></pre>
+  <p>오류 당시 WebApp과 직접 조회한 로봇 알람은 모두 <code>0/0</code>이었다. 따라서 SDK code 14는
+    로봇 자체 알람이 최초 원인이 아니라, ROS가 궤적을 중단한 이후 ServoJ 명령이 거절된 후속 현상이었다.</p>
+
+  <h3>연결 초기화 과정에서 함께 발견한 문제</h3>
+  <ul>
+    <li>연결 직후 실시간 상태 구조체의 오래된 <code>alarm=1/23</code> 값을 검사해 정상 로봇을 오류로 판단했다.</li>
+    <li>수동 모드 또는 비활성 컨트롤러 상태에서는 계획만 성공하고 실제 로봇이 움직이지 않을 수 있었다.</li>
+    <li><code>ServoMoveStart()</code> 호출 순서와 현재 위치를 명령 위치로 동기화하는 과정이 필요했다.</li>
+    <li>관절 명령 유효성 검사 범위가 J6까지 포함되지 않는 코드가 있었다.</li>
+  </ul>
+
+  <h2>2. 진단 방법과 원인 확정</h2>
+  <p>오른쪽 경로를 반복하면서 <code>/fairino5_controller/controller_state</code>와
+    <code>/arm/joint_states</code>를 rosbag으로 기록했다. 동시에 ServoJ RPC 호출 시간과 100 Hz 제어주기를 계측했다.</p>
+  <p>수정 전 같은 첫 번째 경로의 시작 후 12초 시점에서 J5 오차가 회차마다 약 0.052 rad씩 증가했다.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 370" role="img" aria-label="수정 전후 반복별 J5 오차 그래프">
+      <text x="20" y="25" class="value" font-size="16">동일 경로 +12초 시점 J5 추종 오차</text>
+      <line x1="80" y1="310" x2="860" y2="310" class="axis"/><line x1="80" y1="50" x2="80" y2="310" class="axis"/>
+      <line x1="80" y1="75" x2="860" y2="75" class="grid"/><text x="10" y="79" class="label">0.20 rad</text>
+      <line x1="80" y1="192" x2="860" y2="192" class="grid"/><text x="10" y="196" class="label">0.10 rad</text>
+      <line x1="80" y1="251" x2="860" y2="251" class="grid"/><text x="10" y="255" class="label">0.05 rad</text>
+      <polyline fill="none" stroke="#dc3545" stroke-width="4" points="145,270 315,210 485,148 655,84"/>
+      <circle cx="145" cy="270" r="6" fill="#dc3545"/><circle cx="315" cy="210" r="6" fill="#dc3545"/>
+      <circle cx="485" cy="148" r="6" fill="#dc3545"/><circle cx="655" cy="84" r="6" fill="#dc3545"/>
+      <polyline fill="none" stroke="#16845b" stroke-width="4" points="145,296 315,291 485,289 655,290 825,292"/>
+      <circle cx="145" cy="296" r="6" fill="#16845b"/><circle cx="315" cy="291" r="6" fill="#16845b"/>
+      <circle cx="485" cy="289" r="6" fill="#16845b"/><circle cx="655" cy="290" r="6" fill="#16845b"/>
+      <circle cx="825" cy="292" r="6" fill="#16845b"/>
+      <text x="135" y="332" class="label">1회</text><text x="305" y="332" class="label">2회</text>
+      <text x="475" y="332" class="label">3회</text><text x="645" y="332" class="label">4회</text>
+      <text x="815" y="332" class="label">5회</text>
+      <rect x="525" y="20" width="14" height="4" fill="#dc3545"/><text x="545" y="26" class="label">수정 전</text>
+      <rect x="665" y="20" width="14" height="4" fill="#16845b"/><text x="685" y="26" class="label">cmdT=0.008 수정 후</text>
+    </svg>
+    <figcaption>수정 전: 0.0344 → 0.0853 → 0.1386 → 0.1930 rad. 수정 후: 0.0117~0.0177 rad 범위로 유지.</figcaption>
+  </figure>
+
+  <p>당시 ServoJ 호출 자체는 대부분 3~5 ms였고 네트워크 오류나 로봇 알람은 없었다. 하지만
+    <code>controller_manager</code>는 100 Hz, 즉 10 ms 주기로 실행되는 반면 ServoJ의 명령 전송 주기
+    <code>cmdT</code>도 정확히 <code>0.010초</code>였다. 통신과 스케줄러 오버헤드를 흡수할 여유가 없어
+    로봇 내부 명령 큐가 반복마다 조금씩 밀린 것이 선형 오차 증가의 원인이었다.</p>
+  <div class="callout"><strong>확정 원인:</strong> 속도 자체나 순간 RPC 지연이 아니라,
+    100 Hz 호스트 주기와 동일하게 설정한 ServoJ <code>cmdT=0.010</code>으로 인한 명령 큐 누적.</div>
+
+  <h2>3. 적용한 해결 방법</h2>
+  <ol>
+    <li>연결 직후 현재 관절 위치를 읽어 state와 command를 동일하게 초기화했다.</li>
+    <li><code>ResetAllError()</code> 후 1초 대기하고 <code>GetRobotErrorCode()</code>의 최신 main/sub 값을 직접 검사했다.</li>
+    <li><code>RobotEnable(1)</code> 후 상태를 확인하고, 수동 모드이면 <code>Mode(0)</code>으로 자동 전환했다.</li>
+    <li><code>StopMotion → ServoMoveEnd → ServoMoveStart</code> 순서로 Servo 모드를 초기화했다.</li>
+    <li>비활성화 시 <code>ServoMoveEnd → StopMotion → CloseRPC</code> 순서로 종료하도록 했다.</li>
+    <li>J1~J6 전체의 유효성을 검사하도록 범위를 수정했다.</li>
+    <li>ServoJ 전송 주기를 <code>0.010</code>에서 <strong><code>0.008초</code></strong>로 변경했다.</li>
+    <li>read, ServoJ RPC, controller period의 최대 시간을 1,000주기마다 출력하고 10 ms 초과를 별도 경고하도록 했다.</li>
+  </ol>
+  <pre><code>// 100 Hz host period보다 작게 두어 전송/스케줄러 여유 확보
+const int code = _ptr_robot-&gt;ServoJ(
+    &amp;command, &amp;external,
+    servo_acceleration, servo_velocity,
+    0.008F, 0, 0);</code></pre>
+  <p class="small">주요 구현: <span class="path">frcobot_ros2/fairino_hardware_v3_9_5/src/fairino_hardware_interface.cpp</span></p>
+
+  <h2>4. 수정 후 재현 시험</h2>
+  <table>
+    <thead><tr><th>조건</th><th>결과</th></tr></thead>
+    <tbody>
+      <tr><td>경로</td><td>오른쪽 6개 좌표 + 대기 자세 복귀</td></tr>
+      <tr><td>속도 / 가속도</td><td>0.08 / 0.03</td></tr>
+      <tr><td>반복</td><td>5회, 총 30개 좌표 + 복귀 5회</td></tr>
+      <tr><td>수집 샘플</td><td>38,123개</td></tr>
+      <tr><td>전체 최대 추종 오차</td><td class="ok">J5 0.017985 rad</td></tr>
+      <tr><td>0.10 / 0.15 / 0.20 rad 초과 샘플</td><td class="ok">모두 0개</td></tr>
+      <tr><td>PATH_TOLERANCE / SDK code 14</td><td class="ok">0회</td></tr>
+    </tbody>
+  </table>
+  <p>수정 전에는 4회차 첫 좌표에서 실패했지만, 수정 후에는 5회 모두 완료했다. 같은 시점의 J5 오차도
+    <code>0.011680, 0.016116, 0.017726, 0.016334, 0.015786 rad</code>로 누적되지 않았다.</p>
+
+  <h2>5. 속도 최적화 시험</h2>
+  <p>오른쪽 상단 3개 좌표만 사용하고, 각 설정을 5회 반복했다. 가속도는 0.03, path tolerance는
+    0.2 rad, ServoJ cmdT는 0.008초로 유지했다. 각 회차는 3개 좌표 이동 후 대기 자세로 복귀했다.</p>
+  <table>
+    <thead><tr><th>속도 / 가속도</th><th class="num">반복</th><th class="num">최대 오차</th>
+      <th class="num">0.10 rad 초과</th><th class="num">총 이동 시간</th><th>판정</th></tr></thead>
+    <tbody>
+      <tr><td>0.10 / 0.03</td><td class="num">5/5</td><td class="num">0.019558</td><td class="num">0</td><td class="num">489.15초</td><td class="ok">통과</td></tr>
+      <tr><td>0.12 / 0.03</td><td class="num">5/5</td><td class="num">0.019651</td><td class="num">0</td><td class="num">476.03초</td><td class="ok">통과</td></tr>
+      <tr><td>0.15 / 0.03</td><td class="num">5/5</td><td class="num">0.019469</td><td class="num">0</td><td class="num">471.43초</td><td class="ok">통과</td></tr>
+    </tbody>
+  </table>
+
+  <figure>
+    <svg viewBox="0 0 900 390" role="img" aria-label="속도 설정별 최대 오차와 이동 시간">
+      <text x="20" y="25" class="value" font-size="16">속도 설정별 최대 오차</text>
+      <line x1="90" y1="310" x2="850" y2="310" class="axis"/><line x1="90" y1="55" x2="90" y2="310" class="axis"/>
+      <line x1="90" y1="182" x2="850" y2="182" class="grid"/><text x="16" y="186" class="label">0.05 rad</text>
+      <line x1="90" y1="55" x2="850" y2="55" stroke="#dc3545" stroke-width="2" stroke-dasharray="7 5"/>
+      <text x="705" y="48" class="label">중단 기준 0.10 rad</text>
+      <rect x="170" y="260" width="130" height="50" rx="5" fill="#2563eb"/>
+      <rect x="385" y="260" width="130" height="50" rx="5" fill="#0891b2"/>
+      <rect x="600" y="260" width="130" height="50" rx="5" fill="#16845b"/>
+      <text x="200" y="252" class="value">0.019558</text><text x="415" y="252" class="value">0.019651</text>
+      <text x="630" y="252" class="value">0.019469</text>
+      <text x="190" y="335" class="label">0.10 / 0.03</text><text x="405" y="335" class="label">0.12 / 0.03</text>
+      <text x="620" y="335" class="label">0.15 / 0.03</text>
+      <text x="180" y="365" class="label">489.15초</text><text x="395" y="365" class="label">476.03초</text>
+      <text x="610" y="365" class="label">471.43초</text>
+    </svg>
+    <figcaption>막대는 최대 추종 오차, 아래 숫자는 20개 이동 구간의 합계다. 세 설정의 오차 차이는 측정 변동 범위다.</figcaption>
+  </figure>
+
+  <p>0.15는 모든 시험을 통과했지만 0.12보다 총 이동 시간이 4.6초, 약 1%만 짧았다. 가속도 0.03에서는
+    짧은 구간이 최고속도에 도달하기 전에 감속하므로 속도 상향 효과가 작다. 첫 번째 이동은 세 설정 모두
+    약 26.7초로 같았다.</p>
+  <div class="callout"><strong>권장 운영값: 속도 0.12 / 가속도 0.03.</strong><br>
+    시험된 최고 안정값은 0.15 / 0.03이지만 시간 이득이 약 1%뿐이므로 한 단계 여유를 둔 0.12가 적절하다.
+    tolerance 0.2 rad와 ServoJ cmdT 0.008초는 유지한다.</div>
+
+  <h2>6. 시험 데이터와 재현 정보</h2>
+  <table>
+    <thead><tr><th>데이터</th><th>경로</th></tr></thead>
+    <tbody>
+      <tr><td>수정 전 실패 재현</td><td class="path">/tmp/fairino_right_stress_20261016</td></tr>
+      <tr><td>cmdT 수정 후 6포인트</td><td class="path">/tmp/fairino_right_cmdt008_20261016</td></tr>
+      <tr><td>0.10 / 0.03 속도 시험</td><td class="path">/tmp/fairino_speed_010_003_right3</td></tr>
+      <tr><td>0.12 / 0.03 속도 시험</td><td class="path">/tmp/fairino_speed_012_003_right3</td></tr>
+      <tr><td>0.15 / 0.03 속도 시험</td><td class="path">/tmp/fairino_speed_015_003_right3</td></tr>
+    </tbody>
+  </table>
+  <p>빌드 후 하드웨어 lifecycle 단위 시험 12개와 SDK socket 시험 1개, 총 13개 시험이 통과했다.</p>
+
+  <h2>7. 남은 관찰 사항</h2>
+  <ul>
+    <li><strong>실시간 스케줄링:</strong> 현재 시스템의 <code>ulimit -r=0</code> 때문에 controller_manager가 FIFO RT 우선순위를 적용하지 못한다.
+      이번 장애의 직접 원인은 아니었고 cmdT 0.008이 관찰된 10~15 ms 수준의 간헐적 주기 변동을 흡수했다.</li>
+    <li><strong>MoveIt 종료 오류:</strong> Ctrl+C 종료 시 class-loader 객체 해제 순서로 <code>move_group -11</code>이 발생한다.
+      실제 궤적 실행과 ros2_control 하드웨어 종료는 정상이며 별도의 종료 처리 문제다.</li>
+    <li><strong>시험 범위:</strong> 속도 비교는 오른쪽 상단 3개 좌표 기준이다. 전체 9개 좌표 및 좌우 전환 운전에서는
+      운영값 0.12 / 0.03으로 추가 장시간 시험을 권장한다.</li>
+  </ul>
+  <div class="callout warn"><strong>판정:</strong> 간헐적 궤적 중단의 원인은 해소됐다. 반복 오차 누적이 사라졌고,
+    0.15 / 0.03까지 실패 없이 통과했다. 현재 운용 균형점은 0.12 / 0.03이다.</div>
+
+  <footer>작성일: 2026-10-16 (Asia/Seoul) · 문서의 그래프는 실험 rosbag 분석값으로 작성된 인라인 SVG이며 외부 파일이 필요 없다.</footer>
+</main></body></html>

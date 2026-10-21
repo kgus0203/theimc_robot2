@@ -19,6 +19,10 @@
 #include "std_srvs/srv/trigger.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 
+// Fault-recovery policy: on bError inhibit motion; do not issue StopMove.
+// Optional one-shot automatic Reset is OFF by default. Operator service
+// sends Reset first, then re-arms only after the axes confirm standstill.
+// PLC/drive-independent E-stop and watchdog remain mandatory.
 // Vendor-provided Beckhoff wrapper API.
 #include "TcMCApi.h"
 
@@ -64,8 +68,8 @@ public:
     // Vendor confirmed:
     // ramp = milliseconds
     // jerk = 0..100 (% S-curve amount)
-    this->declare_parameter<double>("wheel_ramp_ms", 700.0);
-    this->declare_parameter<double>("rail_ramp_ms", 700.0);
+    this->declare_parameter<double>("wheel_ramp_ms", 1000.0);
+    this->declare_parameter<double>("rail_ramp_ms", 1000.0);
     // Rail Axis3 requires an explicit STOP before reversing direction.
     // After feedback reaches near-zero, keep STOP state for this additional hold time.
     this->declare_parameter<double>("rail_direction_stop_hold_ms", 200.0);
@@ -73,6 +77,11 @@ public:
 
     this->declare_parameter<double>("cmd_vel_timeout_sec", 10.0);
     this->declare_parameter<double>("rail_cmd_timeout_sec", 10.0);
+
+    // An axis bError must NOT cause StopMove(). Vendor PLC can stay BUSY
+    // if MC_Stop is requested during an axis fault. Reset is separated from
+    // motion re-arm. Enable one-shot automatic Reset only after site validation.
+    this->declare_parameter<bool>("auto_reset_axis_fault", false);
 
     // Avoid repeatedly sending nearly-identical MoveVelocity requests.
     this->declare_parameter<double>("wheel_command_epsilon_mps", 0.005);
@@ -145,6 +154,7 @@ public:
 
     cmd_vel_timeout_sec_ = this->get_parameter("cmd_vel_timeout_sec").as_double();
     rail_cmd_timeout_sec_ = this->get_parameter("rail_cmd_timeout_sec").as_double();
+    auto_reset_axis_fault_ = this->get_parameter("auto_reset_axis_fault").as_bool();
 
     wheel_command_epsilon_mps_ =
       std::fabs(this->get_parameter("wheel_command_epsilon_mps").as_double());
@@ -543,7 +553,10 @@ private:
 
   void process_safe_stop(const std::array<AxisStatus, 3> & status)
   {
-    if (!safe_stop_latched_ || !safe_stop_active_) {
+    if (!safe_stop_latched_ || !safe_stop_active_ || fault_latched_ ||
+        has_any_fault(status)) {
+      // Axis fault uses a separate Reset-only recovery path. NEVER queue
+      // another StopMove() from the generic SAFE STOP handler while faulted.
       return;
     }
 
@@ -609,6 +622,11 @@ private:
     double ramp_ms,
     const char * context)
   {
+    // Centralized STOP guard: protects shutdown, watchdog and future callers
+    // against issuing MC_Stop/StopMove while an error latch is active.
+    if (fault_latched_) {
+      return StopRequestResult::FAILED;
+    }
     if (!stop_retry_due(axis)) {
       return StopRequestResult::RATE_LIMITED;
     }
@@ -709,6 +727,12 @@ private:
     double timeout_sec,
     const std::string & reason)
   {
+    if (fault_latched_) {
+      // The faulted drive must not see StopMove(), even during ROS shutdown.
+      std::array<AxisStatus, 3> fault_status{};
+      return read_axis_status(fault_status) &&
+        !has_any_fault(fault_status) && all_axes_physically_stopped(fault_status);
+    }
     clear_motion_requests();
     stop_attempt_initialized_.fill(false);
 
@@ -954,6 +978,50 @@ private:
     }
 
     return true;
+  }
+
+  // Fault recovery must never issue StopMove(). After Reset clears the error,
+  // re-arm is allowed ONLY if all axes already report a physical standstill.
+  // Uses existing vendor PowerEnable/PowerDisable API; no motion command.
+  bool configure_power_after_fault_reset_without_stop(double timeout_sec)
+  {
+    std::array<AxisStatus, 3> status{};
+    if (!read_axis_status(status) || has_any_fault(status) ||
+        !all_axes_physically_stopped(status)) {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[FAULT RESET] Power re-arm refused: axes are faulted, moving or feedback unavailable. "
+        "No StopMove() was transmitted.");
+      return false;
+    }
+
+    const bool wheels_ready =
+      status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed &&
+      status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool rail_ready =
+      status[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed;
+
+    // Avoid unnecessary power cycling if the physical mode is already correct.
+    if (wheels_ready == wheel_mode_requested() &&
+        rail_ready == rail_mode_requested()) {
+      wheel_axes_enabled_ = wheels_ready;
+      rail_axis_enabled_ = rail_ready;
+      return true;
+    }
+
+    power_disable_all_axes();
+    if (rail_mode_requested()) {
+      if (!power_enable_axis(rail_axis_)) {
+        return false;
+      }
+      return wait_for_expected_power_state(false, true, timeout_sec);
+    }
+
+    if (!power_enable_axis(left_wheel_axis_) ||
+        !power_enable_axis(right_wheel_axis_)) {
+      return false;
+    }
+    return wait_for_expected_power_state(true, false, timeout_sec);
   }
 
   void connect_and_initialize()
@@ -1525,6 +1593,7 @@ private:
       safe_stop_latched_ = false;
       safe_stop_active_ = false;
       safe_stop_reason_.clear();
+      fault_reset_attempted_.fill(false);
       wheel_motion_armed_ = false;
       rail_motion_armed_ = false;
       response->success = true;
@@ -1538,53 +1607,74 @@ private:
       return;
     }
 
-    // Safety first: no new motion command may survive the reset.
+    // Vendor-specific fault recovery: do NOT send StopMove before Reset or
+    // after Reset. Keep ROS motion inhibited throughout the whole sequence.
     clear_motion_requests();
     motion_ready_ = false;
-
-    // Do NOT PowerDisable a moving/busy axis.
-    // Axis2 may return ADSERR_DEVICE_BUSY (0x98110708) to StopMove.
-    // Retry STOP with backoff and require vendor bNotMoving + near-zero speed.
-    if (!wait_until_all_axes_stopped(stop_wait_timeout_sec_, "fault reset")) {
+    std::array<AxisStatus, 3> status{};
+    if (!read_axis_status(status)) {
       response->success = false;
-      response->message =
-        "Fault reset aborted: one or more axes did not physically stop. "
-        "PowerDisable/Reset was not forced on a moving axis.";
+      response->message = "AxisStatus unavailable; Reset/re-arm refused.";
       return;
     }
 
-    bool reset_ok = true;
-    for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
-      const int32_t result = Reset(static_cast<uint32_t>(axis));
-      if (result != NO_ERR_TcMCFUN) {
-        reset_ok = false;
-        RCLCPP_ERROR(
-          this->get_logger(),
-          "Reset(Axis%d) failed: 0x%X",
-          axis,
-          static_cast<unsigned int>(result));
+    if (has_any_fault(status)) {
+      // Latch fault before issuing any ADS command, even if the ROS timer has
+      // not yet processed the notification. This activates the central STOP guard.
+      fault_latched_ = true;
+      if (!safe_stop_latched_) {
+        enter_safe_stop("axis fault detected during reset request");
+      }
+      safe_stop_active_ = false;
+
+      bool reset_ok = true;
+      for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+        const std::size_t idx = static_cast<std::size_t>(axis - 1);
+        if (!status[idx].bError) {
+          continue;
+        }
+        RCLCPP_WARN(this->get_logger(),
+          "[FAULT RESET TX] Axis%d Reset() without StopMove", axis);
+        const int32_t result = Reset(static_cast<uint32_t>(axis));
+        fault_reset_attempted_[static_cast<std::size_t>(axis)] = true;
+        if (result != NO_ERR_TcMCFUN) {
+          reset_ok = false;
+          RCLCPP_ERROR(this->get_logger(),
+            "[FAULT RESET] Reset(Axis%d) failed: 0x%X", axis,
+            static_cast<unsigned int>(result));
+        }
+      }
+      if (!reset_ok) {
+        response->success = false;
+        response->message =
+          "Reset() failed; no StopMove was transmitted. Check PLC error/Busy.";
+        return;
+      }
+      if (!wait_until_faults_clear(3.0)) {
+        response->success = false;
+        response->message =
+          "Reset sent without StopMove, but error did not clear in 3 seconds. "
+          "Motion remains latched.";
+        return;
       }
     }
 
-    if (!reset_ok) {
+    // Reset() clearing bError is NOT equivalent to the axis being stopped.
+    // The robot must physically stop under its own drive/PLC fault reaction.
+    if (!read_axis_status(status) || has_any_fault(status) ||
+        !all_axes_physically_stopped(status)) {
       response->success = false;
-      response->message = "One or more Reset() calls failed.";
+      response->message =
+        "Axis error may be cleared, but standstill is NOT confirmed. "
+        "No StopMove/PowerDisable sent; manual inspection required.";
       return;
     }
 
-    if (!wait_until_faults_clear(3.0)) {
+    if (!configure_power_after_fault_reset_without_stop(5.0)) {
       response->success = false;
       response->message =
-        "Reset command was sent, but an axis fault did not clear within 3 seconds.";
-      return;
-    }
-
-    // Axes were verified stopped above, so the state-based PowerDisable /
-    // PowerEnable handover is now safe.
-    if (!configure_power_for_current_state_blocking(5.0)) {
-      response->success = false;
-      response->message =
-        "Faults cleared, but safe state-based PowerEnable/PowerDisable failed.";
+        "Re-arm/power handover failed. No StopMove sent. "
+        "Check PLC state and axis feedback.";
       return;
     }
 
@@ -1595,6 +1685,8 @@ private:
     safe_stop_latched_ = false;
     safe_stop_active_ = false;
     safe_stop_reason_.clear();
+    fault_reset_attempted_.fill(false);
+    stop_attempt_initialized_.fill(false);
     move_attempt_initialized_.fill(false);
     wheel_motion_armed_ = false;
     rail_motion_armed_ = false;
@@ -1605,7 +1697,7 @@ private:
 
     response->success = true;
     response->message =
-      "Reset completed after physical stop confirmation; power policy restored.";
+      "Reset/re-arm complete (no StopMove). New fresh velocity command required.";
   }
 
   // ============================================================
@@ -1756,10 +1848,12 @@ private:
     double target_angular = requested_angular_z_rps_;
     double target_rail = requested_rail_speed_mps_;
 
+    // Command timeout is a NORMAL-OPERATION watchdog. Fault recovery is
+    // Reset-only and must not dispatch StopMove through the timeout path.
     const bool wheel_timeout =
-      (now - last_cmd_vel_time_).seconds() > cmd_vel_timeout_sec_;
+      !fault_latched_ && (now - last_cmd_vel_time_).seconds() > cmd_vel_timeout_sec_;
     const bool rail_timeout =
-      (now - last_rail_cmd_time_).seconds() > rail_cmd_timeout_sec_;
+      !fault_latched_ && (now - last_rail_cmd_time_).seconds() > rail_cmd_timeout_sec_;
 
     if (wheel_timeout) {
       target_linear = 0.0;
@@ -1979,60 +2073,43 @@ private:
       if (!fault_latched_) {
         RCLCPP_ERROR(
           this->get_logger(),
-          "Axis fault detected. Left(error=%d code=0x%X), "
-          "Right(error=%d code=0x%X), Rail(error=%d code=0x%X). "
-          "New motion is inhibited. STOP will be retried safely; "
-          "PowerDisable is forbidden until physical stop is confirmed.",
-          left.bError ? 1 : 0,
-          static_cast<unsigned int>(left.nErrorCode),
-          right.bError ? 1 : 0,
-          static_cast<unsigned int>(right.nErrorCode),
-          rail.bError ? 1 : 0,
-          static_cast<unsigned int>(rail.nErrorCode));
-
-        clear_motion_requests();
-        fault_stop_active_ = true;
-        enter_safe_stop("axis fault detected");
+          "[AXIS FAULT] L=%d(0x%X) R=%d(0x%X) Rail=%d(0x%X). "
+          "Inhibiting ALL new motion. StopMove is PROHIBITED during fault. "
+          "Reset errors first, then verify standstill before re-arm.",
+          left.bError ? 1 : 0, static_cast<unsigned int>(left.nErrorCode),
+          right.bError ? 1 : 0, static_cast<unsigned int>(right.nErrorCode),
+          rail.bError ? 1 : 0, static_cast<unsigned int>(rail.nErrorCode));
+        enter_safe_stop("axis fault: Reset-only; no StopMove");
       }
 
       fault_latched_ = true;
+      fault_stop_active_ = false;
+      safe_stop_active_ = false;  // Generic SAFE STOP sends StopMove: disable it.
       motion_ready_ = false;
+      wheel_stop_pending_ = false;
+      clear_motion_requests();
 
-      // Continue STOP attempts while faulted. Device BUSY is retried with
-      // backoff; Controller Enable stays ON until bNotMoving + v~=0.
-      if (fault_stop_active_) {
-        const bool left_stopped =
-          axis_is_physically_stopped(left, left_wheel_sign_);
-        const bool right_stopped =
-          axis_is_physically_stopped(right, right_wheel_sign_);
-        const bool rail_stopped =
-          axis_is_physically_stopped(rail, rail_sign_);
-
-        if (!left_stopped) {
-          (void)request_axis_stop(
-            left_wheel_axis_, wheel_ramp_ms_, "axis fault");
-        }
-        if (!right_stopped) {
-          (void)request_axis_stop(
-            right_wheel_axis_, wheel_ramp_ms_, "axis fault");
-        }
-        if (!rail_stopped) {
-          (void)request_axis_stop(
-            rail_axis_, rail_ramp_ms_, "axis fault");
-        }
-
-        if (left_stopped && right_stopped && rail_stopped) {
-          fault_stop_active_ = false;
-          applied_left_mps_ = 0.0;
-          applied_right_mps_ = 0.0;
-          applied_rail_mps_ = 0.0;
-          RCLCPP_WARN(
-            this->get_logger(),
-            "[SAFE STOP] Faulted system is now physically stopped. "
-            "Call /agv/reset_faults after removing the hardware cause.");
+      // Optional and strictly one-shot. Disabled by default: a real drive
+      // fault may require operator intervention before Reset is permissible.
+      // Even if Reset succeeds, SAFE STOP remains latched until the user
+      // calls /agv/reset_faults and standstill/power state are verified.
+      if (auto_reset_axis_fault_) {
+        for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+          const std::size_t idx = static_cast<std::size_t>(axis);
+          if (!status[idx - 1].bError || fault_reset_attempted_[idx]) {
+            continue;
+          }
+          fault_reset_attempted_[idx] = true;
+          RCLCPP_WARN(this->get_logger(),
+            "[AUTO FAULT RESET TX] Axis%d Reset() once; no StopMove", axis);
+          const int32_t result = Reset(static_cast<uint32_t>(axis));
+          if (result != NO_ERR_TcMCFUN) {
+            RCLCPP_ERROR(this->get_logger(),
+              "[AUTO FAULT RESET] Axis%d failed: 0x%X (no retry)", axis,
+              static_cast<unsigned int>(result));
+          }
         }
       }
-
       return;
     }
 
@@ -2232,6 +2309,11 @@ private:
   // ============================================================
   void apply_rail_command(double rail_target_mps)
   {
+    // This routine contains a direct StopMove(Axis3) path, so it must also
+    // obey the fault interlock independently of request_axis_stop().
+    if (fault_latched_ || safe_stop_latched_ || !motion_ready_) {
+      return;
+    }
     constexpr double kZeroMps = 1.0e-6;
     constexpr double kStoppedThresholdMps = 0.01;
 
@@ -2933,6 +3015,8 @@ private:
 
   double cmd_vel_timeout_sec_{10.0};
   double rail_cmd_timeout_sec_{10.0};
+  bool auto_reset_axis_fault_{false};  // OFF until PLC/drive reset safety validated.
+  std::array<bool, 4> fault_reset_attempted_{{false, false, false, false}};
 
   double wheel_command_epsilon_mps_{0.005};
   double wheel_move_command_min_interval_ms_{100.0};
@@ -3082,7 +3166,7 @@ int main(int argc, char ** argv)
       rclcpp::get_logger("agv_ads_driver"),
       "Fatal error: %s",
       e.what());
-  } 
+  }
 
   rclcpp::shutdown();
   return 0;

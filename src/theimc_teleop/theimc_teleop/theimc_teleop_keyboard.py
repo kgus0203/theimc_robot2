@@ -508,7 +508,11 @@ def main():
 
             # ---------------- AGV error/fault reset ----------------
             elif key == 'r':
-                # Safety: clear all local motion targets and publish STOP first.
+                # IMPORTANT (vendor-specific Beckhoff fault recovery):
+                # Clear only local teleop targets. Do NOT publish wheel/rail STOP
+                # immediately before Reset: downstream PLC StopMove can stay BUSY
+                # when a drive fault is present. The AGV driver must block motion
+                # throughout recovery and the PLC must enforce safe stopping.
                 target_linear_velocity = 0.0
                 target_angular_velocity = 0.0
                 target_rail_velocity = 0.0
@@ -518,11 +522,9 @@ def main():
                 target_right_wheel_velocity = 0.0
                 current_control_mode = 'none'
 
-                publish_wheel_stop(pub_wheel)
-                publish_rail_command(pub_rail_command, 'STOP')
-                publish_rail_speed_setpoint(pub_rail_speed_setpoint, 0.0)
-
-                print("\n[RESET] Wheel/Rail STOP sent. Calling /agv/reset_faults ...")
+                # No STOP publication here. The fault-aware AGV driver will
+                # request Reset without StopMove, then verify actual standstill.
+                print("\n[RESET] Local targets cleared (no STOP published). Calling /agv/reset_faults ...")
 
                 if not reset_faults_client.wait_for_service(timeout_sec=1.0):
                     print("[RESET][ERROR] /agv/reset_faults service is not available.")
