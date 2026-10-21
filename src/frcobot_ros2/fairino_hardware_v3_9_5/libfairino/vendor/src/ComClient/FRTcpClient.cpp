@@ -1,0 +1,541 @@
+﻿#include "FRTcpClient.h"
+#include "CNDEFrameHandle.h"
+
+#ifdef WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <WS2tcpip.h>
+#include <Mstcpip.h>
+//#pragma comment(lib, "ws2_32.lib")
+#else
+#include <sys/socket.h>
+#include <sys/types.h>  
+#include <sys/time.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+
+#include <iostream>
+#include "XmlRpc.h"
+#include "logger.h"
+#include "Utility.h"
+
+using namespace std;
+
+FRTcpClient::FRTcpClient(string IP, int port)
+{
+	robotIP = IP;
+	robotPort = port;
+
+#ifdef WIN32
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_addr.S_un.S_addr = inet_addr(robotIP.c_str()); /// 服务器ip;
+    servAddr.sin_port = htons(robotPort);                      /// 服务器端口;
+#else
+
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(robotPort);                 /// 服务器端口;
+    servAddr.sin_addr.s_addr = inet_addr(robotIP.c_str()); /// 服务器ip;
+#endif
+
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+#ifdef WIN32
+    int syncnt = 2;
+    setsockopt(fd, IPPROTO_TCP, TCP_MAXRT, (char*)&syncnt, sizeof(syncnt)); //连接时需要将时间设置长一点，避免连接失败
+#endif
+
+    SetTimeOut(timeOut);
+}
+
+
+FRTcpClient::~FRTcpClient()
+{
+    Close();
+}
+
+int FRTcpClient::Connect()
+{
+#ifdef WIN32
+    int rtn = connect(fd, (SOCKADDR*)&servAddr, sizeof(SOCKADDR));
+    if (rtn < 0)
+    {
+        int connectError = WSAGetLastError();
+        logger_error("connect failed; socket errcode is %d", connectError);
+        return -1;
+    }
+#else
+    if (connect(fd, (struct sockaddr*)&servAddr, sizeof(servAddr)) < 0)
+    {
+        logger_error("connect fail, %s.", strerror(errno));
+        if (errno != EINPROGRESS && errno != EALREADY)
+        {
+            usleep(1000 * timeOut);
+        }
+        return -1;
+    }
+#endif
+    
+    return 0;
+}
+
+int FRTcpClient::ReConnect()
+{
+#ifdef WIN32
+    int syncnt = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_MAXRT, (char*)&syncnt, sizeof(syncnt));  //win下连接超时1s，非常准
+#endif
+    reconnFlag = true;
+    bool reconnectSuccess = false;
+
+    int maxConnTimes = 0;
+#ifdef WIN32
+    maxConnTimes = reConnTime / 1000;
+#else
+    maxConnTimes = reConnTime / timeOut;
+#endif // WIN32
+
+    for (int i = 0; i < maxConnTimes; i++)
+    {
+        int connRtn = Connect();
+        if (connRtn != 0)
+        {
+            logger_error("TCPClient pord %d reconnect to Robot fail %d/%d, error code is %d", robotPort, i, maxConnTimes, connRtn);
+//#ifdef WIN32
+//            std::this_thread::sleep_for(std::chrono::milliseconds(timeOut));  //设置不同的延时时间，用于凑1s一次连接
+//#else
+//            std::this_thread::sleep_for(std::chrono::milliseconds(timeOut));  //设置不同的延时时间，用于凑1s一次连接
+//#endif
+            continue;
+        }
+        else
+        {
+            reconnectSuccess = true;
+            break;  //连接成功
+        }
+    }
+    reconnFlag = false;
+    return reconnectSuccess;
+}
+
+int FRTcpClient::SetTimeOut(int timeout)
+{
+#ifdef WIN32
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeOut, sizeof(int));
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeOut, sizeof(int));
+    int bKeepAlive = TRUE;
+    int nRet = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char*)&bKeepAlive, sizeof(bKeepAlive));
+    if (nRet == SOCKET_ERROR)
+    {
+        printf("set SDK socket keepalive failed\n ");
+        return FALSE;
+    }
+
+    // 设置KeepAlive参数
+    tcp_keepalive alive_in = { 0 };
+    tcp_keepalive alive_out = { 0 };
+    alive_in.keepalivetime = 500; // 开始首次KeepAlive探测前的TCP空闭时间 ms
+    alive_in.keepaliveinterval = 500; // 两次KeepAlive探测间的时间间隔 ms
+    alive_in.onoff = TRUE;
+    unsigned long ulBytesReturn = 0;
+    nRet = WSAIoctl(fd, SIO_KEEPALIVE_VALS, &alive_in, sizeof(alive_in),
+        &alive_out, sizeof(alive_out), &ulBytesReturn, NULL, NULL);
+    if (nRet == SOCKET_ERROR)
+    {
+        printf("set SDK socket keepalive param failed\n ");
+        return FALSE;
+    }
+#else
+    int syncnt = 2;
+    setsockopt(fd, IPPROTO_TCP, TCP_SYNCNT, &syncnt, sizeof(syncnt));        //这玩意不会用
+    struct timeval tv;
+    tv.tv_sec = timeOut / 1000;
+    tv.tv_usec = timeOut % 1000 * 1000;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
+
+    int keepAlive = 1; // 开启keepalive属性
+    int keepIdle = 1; // 如该连接在60秒内没有任何数据往来,则进行探测 
+    int keepInterval = 1; // 探测时发包的时间间隔为5 秒
+    int keepCount = 1; // 探测尝试的次数.如果第1次探测包就收到响应了,则不再发.
+
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&keepAlive, sizeof(keepAlive));
+    setsockopt(fd, SOL_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
+    setsockopt(fd, SOL_TCP, TCP_KEEPINTVL, (void*)&keepInterval, sizeof(keepInterval));
+    setsockopt(fd, SOL_TCP, TCP_KEEPCNT, (void*)&keepCount, sizeof(keepCount));
+
+#endif
+    return 0;
+}
+
+int FRTcpClient::Send(char* sendBuf, int sendSize)
+{
+#ifdef WIN32
+    int sendLength = send(fd, sendBuf, sendSize, 0);
+#else
+    int sendLength = send(fd, sendBuf, sendSize, MSG_NOSIGNAL);//必须加MSG_NOSIGNAL，否则网络中断后，发送至fd，socket会发送一个信号终止程序
+#endif // WIN32
+    
+    if (sendLength < 0)
+    {
+        Close();
+        if (reconnEnable == false)  //没有使能重连
+        {
+            return -1;
+        }
+
+#ifdef WIN32
+        WSADATA wsaData;
+        WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif // WIN32
+
+        fd = socket(AF_INET, SOCK_STREAM, 0);
+        SetTimeOut(timeOut);
+        bool reconnectSuccess = ReConnect();
+        if (reconnectSuccess)
+        {
+            sendLength = send(fd, sendBuf, sendSize, 0);
+        }
+        else
+        {
+            return -1;
+        }
+    }
+    return sendLength;
+}
+
+int FRTcpClient::Recv(char* recvBuf, int recvSize)
+{
+    int recvlength = recv(fd, recvBuf, recvSize, 0);
+    return recvlength;
+}
+
+int FRTcpClient::RecvFrame(char* recvBuf, int recvSize)
+{
+
+        int tmpRecvSize = Recv(recvBuf, recvSize);
+        if (tmpRecvSize <= 0)
+        {
+#ifdef WIN32
+            if (WSAGetLastError() == WSAETIMEDOUT) 
+            {
+                return 0;
+            }
+#else
+            if(errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT)
+            {
+                return 0;
+            }
+
+#endif
+
+            logger_error("robot get cmd rpy frame failed");
+            Close();
+            if (reconnEnable == false)  //没有使能重连
+            {
+                return -1;
+            }
+
+#ifdef WIN32
+            WSADATA wsaData;
+            WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif // WIN32
+
+            fd = socket(AF_INET, SOCK_STREAM, 0);
+            SetTimeOut(timeOut);
+            bool reconnectSuccess = ReConnect();
+            if (reconnectSuccess)
+            {
+                logger_error("port 8080 reconnect success");
+                tmpRecvSize = RecvFrame(recvBuf, recvSize);
+                return tmpRecvSize;
+            }
+            else
+            {
+                return -1;
+            }
+        }
+        else
+        {
+            return tmpRecvSize;
+        }
+}
+
+int FRTcpClient::RecvPkg(char* recvBuf, int recvSize)
+{
+    uint8_t allRecvBuf[2048] = {};
+    int curRecvTotalSize = 0;
+    int tmpRecvSize = 0;
+    char tmpRecvBuf[2048] = {};
+    while (recvSize - curRecvTotalSize > 0)  //还有数据未接收
+    {
+        memset(tmpRecvBuf, 0, 2048);
+        tmpRecvSize = Recv(tmpRecvBuf, recvSize - curRecvTotalSize);
+        if (tmpRecvSize <= 0)
+        {
+            logger_error("robot get realtime pkg failed");
+            Close();
+            if (reconnEnable == false)  //没有使能重连
+            {
+                return -1;
+            }
+
+#ifdef WIN32
+            WSADATA wsaData;
+            WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif // WIN32
+
+            fd = socket(AF_INET, SOCK_STREAM, 0);
+            SetTimeOut(timeOut);
+            bool reconnectSuccess = ReConnect();
+            if (reconnectSuccess)
+            {
+                logger_error("port 20004 reconnect success");
+                curRecvTotalSize = 0;
+            }
+            else
+            {
+                return -1;
+            }
+        }
+        else
+        {
+            memcpy(allRecvBuf + curRecvTotalSize, tmpRecvBuf, tmpRecvSize);
+            curRecvTotalSize += tmpRecvSize;
+        }
+
+        if (recvSize == curRecvTotalSize)
+        {
+            if (allRecvBuf[0] == 0x5A && allRecvBuf[1] == 0x5A)
+            {
+                uint16_t len = 0;
+                len = len | (uint16_t)allRecvBuf[4];
+                len = len << 8;
+                len = len | (uint16_t)allRecvBuf[3];
+                if (len + 7 > recvSize)
+                {
+                    recvSize = len + 7;
+                    continue;
+                }
+                else if (len + 7 == recvSize)
+                {
+                    int j;
+                    uint16_t checksum = 0;
+                    uint16_t checkdata = 0;
+
+                    checkdata = checkdata | allRecvBuf[recvSize - 1];
+                    checkdata = checkdata << 8;
+                    checkdata = checkdata | allRecvBuf[recvSize - 2];
+
+                    for (j = 0; j < recvSize - 2; j++)
+                    {
+                        checksum += allRecvBuf[j];
+                    }
+
+                    if (checksum == checkdata)
+                    {
+                        memcpy(recvBuf, allRecvBuf, recvSize);
+                        return 0;
+                    }
+                    else
+                    {
+                        logger_error("error check sum");
+                        return -2;//和校验失败
+                    }
+                }
+                else
+                {
+                    logger_error("error SDK version");
+                    return -3;  //SDK 比机器人版本新，得更新机器人版本
+                }
+
+            }
+        }
+    }
+    return 0;
+}
+
+int FRTcpClient::RecvCNDEPkg(char* recvBuf)
+{
+    char allRecvBuf[CNDE_MAX_PKG_SIZE] = {};
+    int curRecvTotalSize = 0;
+    int tmpRecvSize = 0;
+    char tmpRecvBuf[CNDE_MAX_PKG_SIZE] = {};
+    uint16_t toRecvSize = 6;
+    bool findHeadFlag = false;
+    uint16_t frameLen = 0;
+    while (toRecvSize > 0)  //还有数据未接收
+    {
+        memset(tmpRecvBuf, 0, CNDE_MAX_PKG_SIZE);
+        tmpRecvSize = Recv(tmpRecvBuf, toRecvSize - curRecvTotalSize);
+        //printf("cnde recv size is %d\n", tmpRecvSize);
+        //printf("recv err str is %d\n", WSAGetLastError());
+
+        //for (int i = 0; i < tmpRecvSize; i++)
+        //{
+        //    printf(" %x", tmpRecvBuf[i]);
+        //}
+        //printf("\n");
+
+        //printf("   %s\n", tmpRecvBuf);
+        if (tmpRecvSize <= 0)
+        {
+#ifdef WIN32
+            if (WSAGetLastError() == WSAETIMEDOUT)
+            {
+                Sleep(50);
+                continue;
+            }
+#else
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                usleep(50 * 1000);
+                continue;
+            }
+#endif
+
+            logger_error("robot get realtime pkg failed  %d", tmpRecvSize);
+            Close();
+            if (reconnEnable == false)  //没有使能重连
+            {
+                return -1;
+            }
+
+#ifdef WIN32
+            WSADATA wsaData;
+            WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif // WIN32
+
+            fd = socket(AF_INET, SOCK_STREAM, 0);
+            SetTimeOut(timeOut);
+            bool reconnectSuccess = ReConnect();
+            if (reconnectSuccess)
+            {
+                logger_error("port 20005 reconnect success");
+                findHeadFlag == false;
+                curRecvTotalSize = 0;
+                return 0;  //重连成功，需要重新发送启动指令
+            }
+            else
+            {
+                return -2;
+            }
+        }
+        else
+        {
+            memcpy(allRecvBuf + curRecvTotalSize, tmpRecvBuf, tmpRecvSize);
+            curRecvTotalSize += tmpRecvSize;
+            if (findHeadFlag == false && curRecvTotalSize >= 6)
+            {
+                if (allRecvBuf[0] == 0x5A && allRecvBuf[1] == 0x5A)
+                {
+                    findHeadFlag = true;
+                    uint16_t dataLen = 0;
+                    ByteToInt16((unsigned char*)allRecvBuf + 4, dataLen);
+                    if (dataLen > CNDE_MAX_PKG_SIZE - 8)
+                    {
+                        logger_error("CNDE frame too large: %u", dataLen);
+                        return -5;
+                    }
+                    frameLen = dataLen + 8;
+                    toRecvSize = frameLen;
+                }
+                else
+                {
+                    return -3;
+                }
+            }
+
+            if (findHeadFlag == true && curRecvTotalSize >= frameLen)
+            {
+                if (((uint8_t)allRecvBuf[frameLen - 1]) == 0xA5 && ((uint8_t)allRecvBuf[frameLen - 2]) == 0xA5)
+                {
+                    memcpy(recvBuf, allRecvBuf, frameLen);
+                    return frameLen;
+                }
+                else
+                {
+                    //TODO 报错
+                    return -4;
+                }
+            }
+        }
+    }
+}
+
+int FRTcpClient::Close() 
+{
+    const socket_fd socket_to_close = fd.exchange(-1);
+    if (socket_to_close == -1)
+    {
+        return 0;
+    }
+#ifdef WIN32
+	closesocket(socket_to_close);
+	WSACleanup();
+#else
+    shutdown(socket_to_close, 2);
+	close(socket_to_close);
+#endif
+
+    return 0;
+}
+
+int FRTcpClient::SetReConnectParam(bool enable, int reconnectTime, int period)
+{
+    this->reConnTime = reconnectTime;
+    this->reconnEnable = enable;
+    this->timeOut = period;
+    SetTimeOut(period);
+    return 0;
+}
+
+bool FRTcpClient::GetReConnectEnable()
+{
+    return this->reconnEnable;
+}
+
+//判断当前是否正在重连
+bool FRTcpClient::GetReConnState()
+{
+    return reconnFlag;
+}
+
+int FRTcpClient::SetIpConfig(std::string IP)
+{
+    robotIP = IP;
+
+#ifdef WIN32
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_addr.S_un.S_addr = inet_addr(robotIP.c_str()); /// ������ip;
+    servAddr.sin_port = htons(robotPort);                      /// �������˿�;
+#else
+
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(robotPort);                 /// �������˿�;
+    servAddr.sin_addr.s_addr = inet_addr(robotIP.c_str()); /// ������ip;
+#endif
+
+    if (fd.load() == -1)
+    {
+        fd = socket(AF_INET, SOCK_STREAM, 0);
+        SetTimeOut(timeOut);
+    }
+    return 0;
+}
+
+int FRTcpClient::SetPortConfig(int port)
+{
+    robotPort = port;
+    return 0;
+}

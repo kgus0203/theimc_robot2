@@ -1,0 +1,14 @@
+<library path="fairino_hardware">
+    <class name="fairino_hardware/FairinoHardwareInterface"
+           type="fairino_hardware::FairinoHardwareInterface"
+           base_class_type="hardware_interface::SystemInterface">
+        <description>
+            Hardware interface for Fairino Robots
+        </description>
+    </class>
+    <class name="fairino_hardware_v3_9_5/FairinoHardwareInterface"
+           type="fairino_hardware::FairinoHardwareInterface"
+           base_class_type="hardware_interface::SystemInterface">
+        <description>Version-pinned real hardware with checked ServoJ session.</description>
+    </class>
+</library>
