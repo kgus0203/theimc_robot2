@@ -74,6 +74,23 @@ OMPL/RRTConnect로 각 구간을 계획하고 성공한 경로만 실행합니�
 - `connection_timeout:=30.0`: MoveIt 연결 제한 시간(초).
 - `use_rviz:=false`: RViz 창 없이 실행. 경로 토픽과 충돌 검사는 유지됩니다.
 
+## 단계별 실물 속도 시험
+
+`speed_stage_test`는 이미 실행 중인 실물 MoveIt 및 `waypoint_test`에 연결해 지정한
+설정을 반복하고, controller state와 joint state를 자동으로 rosbag에 기록합니다.
+0.10rad 이상의 추종 오차나 Action 실패가 발생하면 남은 반복을 중단합니다.
+
+```bash
+ros2 run fairino_waypoint_test speed_stage_test \
+  --velocity 0.20 --acceleration 0.05 --repeats 2 --waypoints 3 \
+  --bag /tmp/fairino_speed_v020_a005_right3_r2
+```
+
+결과는 rosbag 폴더의 `stage_summary.json`에 저장됩니다. 기존 bag 경로가 있으면
+날짜·시간 suffix를 붙여 보존합니다. 각 단계의 waypoint node는 같은 velocity와
+acceleration, `waypoint_limit:=3`으로 실행해야 합니다. 물리적 진동·소음·충돌 위험은
+자동 판정할 수 없으므로 단계가 끝날 때 작업자가 확인한 뒤 다음 설정을 실행합니다.
+
 왼쪽 랜덤 동작은 기록 자세 실행으로 교체했습니다. 이전 랜덤 동작용
 `cycles`, `seed`, `spread_deg`, `move_zero_first` 옵션은 제거했습니다.
 양쪽 모두 선택한 방향의 자세를 한 번씩 방문하며 ready/zero로 추가 이동하지 않습니다.

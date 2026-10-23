@@ -195,6 +195,9 @@ def generate_launch_description():
         executable='agv_node',
         name='agv_ads_driver',
         output='screen',
+        # Long enough for verified shutdown before ROS launch escalates to SIGTERM.
+        sigterm_timeout='15',
+        sigkill_timeout='5',
         parameters=[
             {
                 # Real Beckhoff ADS mode
@@ -223,8 +226,13 @@ def generate_launch_description():
                 'jerk_percent': 100.0,
 
                 # Command watchdogs
-                'cmd_vel_timeout_sec': 10.0,
-                'rail_cmd_timeout_sec': 10.0,
+                'cmd_vel_timeout_sec': 1.0,  # prevent unbounded stale drive commands
+                'rail_cmd_timeout_sec': 1.0,  # diagnostic; fresh teleop commands at 10Hz
+                # ADS motion command serialization (conservative ramp+margin).
+                # Does not replace checking PLC MoveVelocity_Status/Stop_Status.
+                'ads_command_settle_extra_ms': 150.0,
+                'stop_suppress_velocity_mps': 0.002,
+
 
                 # Do not resend nearly-identical velocity commands
                 'wheel_command_epsilon_mps': 0.005,
@@ -232,11 +240,22 @@ def generate_launch_description():
 
                 # Normal bringup: enable axes once at startup,
                 # stop + power-disable them during driver shutdown.
-                'power_enable_on_start': True,
-                'power_disable_on_shutdown': True,
+                # Controlled manual operation. Do not start with an active PLC motion job.
+                'power_enable_on_start': True,  # OPERATION: require safe PLC idle before enabling wheels
+                'diagnostic_read_only': False,  # OPERATION: allow ADS motor writes after PLC interlocks
+                # On shutdown Stop then PowerDisable only if axes report confirmed standstill.
+                'power_disable_on_shutdown': True,  # each axis: STOP -> verified OFF
+                'shutdown_poweroff_timeout_sec': 7.0,
+                # Keep strict NC/FB interlocks; do not treat speed=0 as NotMoving.
+                'startup_power_transition_timeout_sec': 5.0,
+                'allow_simultaneous_drive': False,
+                'log_axis_monitor': True,
+                'axis_monitor_period_sec': 0.5,
+                'diagnostic_ads_poll_period_sec': 0.5,
+                'ads_slow_read_warn_ms': 100.0,
 
                 # Suppress repetitive normal-motion logs.
-                'log_motion_commands': False,
+                'log_motion_commands': True,
             }
         ],
     )

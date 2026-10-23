@@ -3,7 +3,9 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <cstring>
 #include <memory>
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -27,6 +29,158 @@
 #include "TcMCApi.h"
 
 using namespace std::chrono_literals;
+
+// Vendor TcMCApi.h is intentionally UNCHANGED.  Its StopMove/MoveVelocity
+// functions return an ADS method result, NOT the PLC FB Done/Busy state.
+// Read the same PLC *_Status methods over our own read-only ADS port.
+// All calls are made on the ROS executor thread; no extra PLC command thread.
+class PlcFbStatusReader
+{
+public:
+  PlcFbStatusReader() = default;
+  PlcFbStatusReader(const PlcFbStatusReader &) = delete;
+  PlcFbStatusReader & operator=(const PlcFbStatusReader &) = delete;
+  ~PlcFbStatusReader() { close(); }
+
+  bool open()
+  {
+    if (port_ > 0) return true;
+    addr_ = {};
+    addr_.netId = REMOTE_NET_ID;
+    addr_.port = AMSPORT_R0_PLC_TC3;
+    port_ = AdsPortOpenEx();
+    if (port_ <= 0) { port_ = 0; return false; }
+    if (!acquire_handle("Stop_Status", stop_handle_) ||
+        !acquire_handle("MoveVelocity_Status", move_handle_) ||
+        !acquire_handle("Stop", stop_command_handle_) ||
+        !acquire_handle("Reset", reset_command_handle_)) {
+      close();
+      return false;
+    }
+    return true;
+  }
+
+  void close()
+  {
+    if (port_ > 0) {
+      release_handle(stop_handle_);
+      release_handle(move_handle_);
+      release_handle(stop_command_handle_);
+      release_handle(reset_command_handle_);
+      AdsPortCloseEx(port_);
+    }
+    stop_handle_ = 0;
+    move_handle_ = 0;
+    stop_command_handle_ = 0;
+    reset_command_handle_ = 0;
+    port_ = 0;
+  }
+
+  bool read_stop(int axis, FunctionStatus & out) {
+    return read_status(stop_handle_, axis, out);
+  }
+  bool read_move(int axis, FunctionStatus & out) {
+    return read_status(move_handle_, axis, out);
+  }
+
+  // One ADS RPC only: unlike vendor StopMove(), do NOT synchronously wait
+  // for MC_Stop.Done here.  The timer verifies FB and NC state afterwards.
+  // Operator-triggered stale-job recovery only.  This does not move/re-arm.
+  bool send_stop_once(int axis, double ramp_ms, double jerk, int32_t & plc_result)
+  {
+    plc_result = UNKNOWN_ERR_TcMCFUN;
+    if (port_ <= 0 || stop_command_handle_ == 0 || axis < 1 || axis > 3) return false;
+#pragma pack(push, 1)
+    struct StopArgs {
+      uint32_t nIndex;
+      double lRampTime;
+      double lJerk;
+    } args{};
+#pragma pack(pop)
+    static_assert(sizeof(StopArgs) == 20, "Stop ADS argument layout mismatch");
+    args.nIndex = uint32_t{1} << (axis - 1);
+    args.lRampTime = ramp_ms;
+    args.lJerk = jerk;
+    uint32_t bytes_read = 0;
+    const long rc = AdsSyncReadWriteReqEx2(
+      port_, &addr_, ADSIGRP_SYM_VALBYHND, stop_command_handle_,
+      sizeof(plc_result), &plc_result,
+      sizeof(args), &args, &bytes_read);
+    return rc == 0 && bytes_read == sizeof(plc_result) && plc_result == 0;
+  }
+
+  // A Reset edge can release a *completed* MC_Stop lock.  Never use it
+  // to override an active motion job, and never infer success from ADS ACK.
+  bool send_reset_once(int axis, int32_t & plc_result)
+  {
+    plc_result = UNKNOWN_ERR_TcMCFUN;
+    if (port_ <= 0 || reset_command_handle_ == 0 || axis < 1 || axis > 3) return false;
+    const uint32_t axis_mask = uint32_t{1} << (axis - 1);
+    uint32_t bytes_read = 0;
+    const long rc = AdsSyncReadWriteReqEx2(
+      port_, &addr_, ADSIGRP_SYM_VALBYHND, reset_command_handle_,
+      sizeof(plc_result), &plc_result,
+      sizeof(axis_mask), const_cast<uint32_t *>(&axis_mask), &bytes_read);
+    return rc == 0 && bytes_read == sizeof(plc_result) && plc_result == 0;
+  }
+
+private:
+  bool acquire_handle(const char * method, uint32_t & handle)
+  {
+    const std::string name = std::string("MotionHandler.fbAxisHandler#") + method;
+    uint32_t cb = 0;
+    handle = 0;
+    const long rc = AdsSyncReadWriteReqEx2(
+      port_, &addr_, ADSIGRP_SYM_HNDBYNAME, 0,
+      sizeof(handle), &handle,
+      static_cast<uint32_t>(name.size() + 1),
+      const_cast<char *>(name.c_str()), &cb);
+    return rc == 0 && cb == sizeof(handle) && handle != 0;
+  }
+
+  void release_handle(uint32_t & handle)
+  {
+    if (!handle || port_ <= 0) return;
+    (void)AdsSyncWriteReqEx(
+      port_, &addr_, ADSIGRP_SYM_RELEASEHND, 0, sizeof(handle), &handle);
+    handle = 0;
+  }
+
+  bool read_status(uint32_t handle, int axis, FunctionStatus & out)
+  {
+    out = {};
+    if (port_ <= 0 || handle == 0 || axis < 1 || axis > 3) return false;
+#pragma pack(push, 1)
+    struct PlcResult {
+      bool bBusy;
+      bool bError;
+      bool bDone;
+      uint32_t nError;
+      int32_t nResult;
+    } value{};
+#pragma pack(pop)
+    static_assert(sizeof(PlcResult) == 11, "PLC status ADS size mismatch");
+    uint32_t axis_mask = (uint32_t{1} << (axis - 1));
+    uint32_t cb = 0;
+    const long rc = AdsSyncReadWriteReqEx2(
+      port_, &addr_, ADSIGRP_SYM_VALBYHND, handle,
+      sizeof(value), &value, sizeof(axis_mask),
+      &axis_mask, &cb);
+    if (rc != 0 || cb != sizeof(value) || value.nResult < 0) return false;
+    out.bBusy = value.bBusy;
+    out.bError = value.bError;
+    out.bDone = value.bDone;
+    out.nError = value.nError;
+    return true;
+  }
+
+  long port_{0};
+  AmsAddr addr_{};
+  uint32_t stop_handle_{0};
+  uint32_t stop_command_handle_{0};
+  uint32_t reset_command_handle_{0};
+  uint32_t move_handle_{0};
+};
 
 class AgvAdsDriver : public rclcpp::Node
 {
@@ -87,15 +241,42 @@ public:
     this->declare_parameter<double>("wheel_command_epsilon_mps", 0.005);
     // Limit Beckhoff MoveVelocity ADS calls. Nav2 may publish at 20+ Hz, but
     // the PLC motion method must not be called for every small velocity update.
-    // STOP commands are NOT rate-limited by this setting.
+    // STOP is one-shot per accepted MoveVelocity, never retried after BUSY.
     this->declare_parameter<double>("wheel_move_command_min_interval_ms", 100.0);
+    // Conservative inter-command delay: move ramp + margin. This is NOT
+    // proof that MC function blocks finished; PLC Method status is preferable.
+    this->declare_parameter<double>("ads_command_settle_extra_ms", 150.0);
+    // When reported speed is essentially zero, never issue a redundant STOP.
+    // This threshold is only for suppressing StopMove, NOT for PowerDisable.
+    this->declare_parameter<double>("stop_suppress_velocity_mps", 0.002);
+    this->declare_parameter<double>("axis_notification_max_age_sec", 1.5);
     // BUSY stop interlock: block new wheel motion until both wheels stop.
     this->declare_parameter<double>("wheel_stop_pending_timeout_sec", 4.0);
     this->declare_parameter<double>("rail_command_epsilon_mps", 0.001);
 
     // Vendor says PowerEnable is required once before motion.
     this->declare_parameter<bool>("power_enable_on_start", true);
+    // Strict read-only mode: do not transmit any ADS Power/Move/Stop/Reset
+    // methods, even if other ROS nodes call power/reset services.
+    // PLC or other ADS clients remain outside this node's control.
+    this->declare_parameter<bool>("diagnostic_read_only", false);
+    // For investigation of delayed PLC bNotMoving feedback. This ONLY extends
+    // the wait: it never bypasses bNotMoving, HasJob, or STOP FB interlocks.
+    this->declare_parameter<double>("startup_power_transition_timeout_sec", 5.0);
     this->declare_parameter<bool>("power_disable_on_shutdown", true);
+    // Give each drive its own verified shutdown.  A stale job on Axis3 must
+    // not prevent powering down a safely stopped Axis1/2.
+    this->declare_parameter<double>("shutdown_poweroff_timeout_sec", 7.0);
+
+    // EXPERIMENTAL: independent Wheel(1/2) + Rail(3) control. Disabled by
+    // default because the vendor originally required mutually exclusive
+    // drive power. Enable ONLY after mechanical/PLC safety validation.
+    // In this mode startup is still Wheel ON / Rail OFF; enable Rail with Y
+    // while all axes are confirmed stopped. Mode changes never auto-cycle
+    // drive power. Per-axis STOP/fault/feedback interlocks remain active.
+    this->declare_parameter<bool>("allow_simultaneous_drive", false);
+    this->declare_parameter<double>("dual_wheel_axis_max_mps", 0.05);
+    this->declare_parameter<double>("dual_rail_max_mps", 0.10);
 
     // Normal MoveVelocity/StopMove command logs can become very noisy
     // because Nav2 may change /cmd_vel frequently. Keep them off by default.
@@ -107,6 +288,11 @@ public:
     // This does not change the motion behavior.
     this->declare_parameter<bool>("log_axis_monitor", false);
     this->declare_parameter<double>("axis_monitor_period_sec", 0.5);
+    // In read-only diagnostics mode, do not request an ADS snapshot at 20 Hz.
+    // Only reduces traffic and ROS executor blocking probability; an ADS
+    // synchronous request may still exceed this period due to network loss.
+    this->declare_parameter<double>("diagnostic_ads_poll_period_sec", 0.5);
+    this->declare_parameter<double>("ads_slow_read_warn_ms", 100.0);
 
     // Safe STOP handling.
     //
@@ -115,8 +301,9 @@ public:
     //
     // Axis2 has returned 0x98110708 (ADSERR_DEVICE_BUSY) when StopMove is
     // requested. Never PowerDisable a wheel that is still moving. When BUSY
-    // occurs, keep power enabled, inhibit new motion, and retry STOP at a
-    // bounded interval.
+    // occurs, keep power enabled and inhibit new motion. NEVER retry STOP
+    // automatically; confirm the drive/PLC state with the vendor.
+    // Deprecated: kept for launch compatibility; STOP retries are disabled.
     this->declare_parameter<double>("stop_retry_interval_ms", 1000.0);
     this->declare_parameter<double>("stop_wait_timeout_sec", 4.0);
     this->declare_parameter<double>("stopped_velocity_threshold_mps", 0.01);
@@ -160,18 +347,33 @@ public:
       std::fabs(this->get_parameter("wheel_command_epsilon_mps").as_double());
     wheel_move_command_min_interval_ms_ =
       this->get_parameter("wheel_move_command_min_interval_ms").as_double();
+    ads_command_settle_extra_ms_ = this->get_parameter("ads_command_settle_extra_ms").as_double();
+    stop_suppress_velocity_mps_ = this->get_parameter("stop_suppress_velocity_mps").as_double();
+    axis_notification_max_age_sec_ = this->get_parameter("axis_notification_max_age_sec").as_double();
     wheel_stop_pending_timeout_sec_ =
       this->get_parameter("wheel_stop_pending_timeout_sec").as_double();
     rail_command_epsilon_mps_ =
       std::fabs(this->get_parameter("rail_command_epsilon_mps").as_double());
 
     power_enable_on_start_ = this->get_parameter("power_enable_on_start").as_bool();
+    diagnostic_read_only_ = this->get_parameter("diagnostic_read_only").as_bool();
+    startup_power_transition_timeout_sec_ =
+      this->get_parameter("startup_power_transition_timeout_sec").as_double();
     power_disable_on_shutdown_ = this->get_parameter("power_disable_on_shutdown").as_bool();
+    shutdown_poweroff_timeout_sec_ =
+      this->get_parameter("shutdown_poweroff_timeout_sec").as_double();
+    allow_simultaneous_drive_ = this->get_parameter("allow_simultaneous_drive").as_bool();
+    dual_wheel_axis_max_mps_ = this->get_parameter("dual_wheel_axis_max_mps").as_double();
+    dual_rail_max_mps_ = this->get_parameter("dual_rail_max_mps").as_double();
     log_motion_commands_ = this->get_parameter("log_motion_commands").as_bool();
 
     log_axis_monitor_ = this->get_parameter("log_axis_monitor").as_bool();
     axis_monitor_period_sec_ =
       this->get_parameter("axis_monitor_period_sec").as_double();
+    diagnostic_ads_poll_period_sec_ =
+      this->get_parameter("diagnostic_ads_poll_period_sec").as_double();
+    ads_slow_read_warn_ms_ =
+      this->get_parameter("ads_slow_read_warn_ms").as_double();
 
     stop_retry_interval_ms_ =
       this->get_parameter("stop_retry_interval_ms").as_double();
@@ -188,6 +390,34 @@ public:
       this->get_parameter("log_environment_sensor").as_bool();
 
     validate_parameters();
+    // Log values actually received by this node, not the source or installed
+    // launch file contents.  This helps detect stale install/share copies.
+    RCLCPP_WARN(this->get_logger(),
+      "[AGV EFFECTIVE PARAMETERS] diagnostic_read_only=%d power_enable_on_start=%d "
+      "power_disable_on_shutdown=%d dual_opt_in=%d "
+      "startup_timeout=%.1fs cmd_vel_timeout=%.1fs rail_timeout=%.1fs "
+      "diag_poll=%.2fs ads_slow_warning=%.0fms",
+      diagnostic_read_only_ ? 1 : 0,
+      power_enable_on_start_ ? 1 : 0,
+      power_disable_on_shutdown_ ? 1 : 0,
+      allow_simultaneous_drive_ ? 1 : 0,
+      startup_power_transition_timeout_sec_,
+      cmd_vel_timeout_sec_, rail_cmd_timeout_sec_,
+      diagnostic_ads_poll_period_sec_, ads_slow_read_warn_ms_);
+    if (allow_simultaneous_drive_) {
+      RCLCPP_WARN(this->get_logger(),
+        "[DUAL DRIVE EXPERIMENTAL] Wheels and Rail may be simultaneously enabled "
+        "and commanded ONLY by explicit operator power requests. "
+        "Vendor mechanical interlock must be validated. Wheel axis <= %.3f m/s, "
+        "rail <= %.3f m/s when both powered. Independent PLC E-stop required.",
+        dual_wheel_axis_max_mps_, dual_rail_max_mps_);
+    }
+    if (!mock_mode_ && cmd_vel_timeout_sec_ > 10.0) {
+      RCLCPP_WARN(this->get_logger(),
+        "[SAFETY] /cmd_vel timeout %.1fs: diagnostic-only setting. "
+        "Real robot must use an independent PLC command-loss watchdog/E-stop.",
+        cmd_vel_timeout_sec_);
+    }
 
     // ============================================================
     // ROS subscriptions
@@ -258,6 +488,15 @@ public:
       "/agv/reset_faults",
       std::bind(
         &AgvAdsDriver::reset_faults_callback,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
+    recover_stale_jobs_srv_ =
+      this->create_service<std_srvs::srv::Trigger>(
+      "/agv/recover_stale_jobs",
+      std::bind(
+        &AgvAdsDriver::recover_stale_jobs_callback,
         this,
         std::placeholders::_1,
         std::placeholders::_2));
@@ -362,37 +601,28 @@ public:
   ~AgvAdsDriver() override
   {
     shutting_down_ = true;
-
+    motion_ready_ = false;
     if (timer_) {
       timer_->cancel();
     }
 
     if (!mock_mode_ && ads_connected_) {
       clear_motion_requests();
-
-      const bool stopped =
-        wait_until_all_axes_stopped(stop_wait_timeout_sec_, "node shutdown");
-
-      if (power_disable_on_shutdown_) {
-        if (stopped) {
-          power_disable_all_axes();
-        } else {
-          // IMPORTANT:
-          // Do not remove Controller Enable while an axis is still moving.
-          // That can create a controller-enable fault (for example 0x4260).
-          RCLCPP_ERROR(
-            this->get_logger(),
-            "[SAFE STOP] Shutdown timeout: one or more axes are still moving. "
-            "Skipping PowerDisable to avoid disabling a moving axis. "
-            "Use PLC/drive watchdog or E-stop for final hardware stop.");
-        }
+      if (diagnostic_read_only_) {
+        RCLCPP_WARN(this->get_logger(),
+          "[SHUTDOWN] diagnostic_read_only=true: no STOP/PowerDisable writes.");
+      } else if (power_disable_on_shutdown_) {
+        // Called while the ADS session is still alive.  This must never
+        // be replaced with an unconditional PowerDisable of moving axes.
+        shutdown_stop_then_poweroff();
+      } else {
+        RCLCPP_WARN(this->get_logger(),
+          "[SHUTDOWN] power_disable_on_shutdown=false: PLC axes may remain enabled!");
       }
-
-      axis_status_notification_registered_ = false;
+      plc_fb_reader_.close();
       Disconnect();
       ads_connected_ = false;
-
-      RCLCPP_INFO(this->get_logger(), "Beckhoff ADS disconnected.");
+      RCLCPP_INFO(this->get_logger(), "[SHUTDOWN] Beckhoff ADS disconnected.");
     }
   }
 
@@ -456,12 +686,39 @@ private:
       throw std::runtime_error("rail_direction_stop_hold_ms must be >= 0");
     }
 
+    if (!std::isfinite(dual_wheel_axis_max_mps_) || dual_wheel_axis_max_mps_ <= 0.0 ||
+        !std::isfinite(dual_rail_max_mps_) || dual_rail_max_mps_ <= 0.0) {
+      throw std::runtime_error("dual speed limits must be finite and > 0");
+    }
     if (!std::isfinite(axis_monitor_period_sec_) ||
         axis_monitor_period_sec_ <= 0.0)
     {
       throw std::runtime_error("axis_monitor_period_sec must be > 0");
     }
+    if (!std::isfinite(diagnostic_ads_poll_period_sec_) ||
+        diagnostic_ads_poll_period_sec_ < 0.05 ||
+        diagnostic_ads_poll_period_sec_ > 30.0) {
+      throw std::runtime_error("diagnostic_ads_poll_period_sec must be within 0.05..30s");
+    }
+    if (!std::isfinite(ads_slow_read_warn_ms_) ||
+        ads_slow_read_warn_ms_ < 1.0 || ads_slow_read_warn_ms_ > 30000.0) {
+      throw std::runtime_error("ads_slow_read_warn_ms must be within 1..30000ms");
+    }
 
+    if (!std::isfinite(ads_command_settle_extra_ms_) ||
+        ads_command_settle_extra_ms_ < 0.0) {
+      throw std::runtime_error("ads_command_settle_extra_ms must be >= 0");
+    }
+    if (!std::isfinite(axis_notification_max_age_sec_) ||
+        axis_notification_max_age_sec_ <= 0.0) {
+      throw std::runtime_error("axis_notification_max_age_sec must be > 0");
+    }
+    if (!std::isfinite(stop_suppress_velocity_mps_) ||
+        stop_suppress_velocity_mps_ < 0.0 ||
+        stop_suppress_velocity_mps_ >= stopped_velocity_threshold_mps_) {
+      throw std::runtime_error(
+        "stop_suppress_velocity_mps must be >= 0 and < stopped_velocity_threshold_mps");
+    }
     if (!std::isfinite(wheel_move_command_min_interval_ms_) ||
         wheel_move_command_min_interval_ms_ < 0.0)
     {
@@ -479,6 +736,18 @@ private:
       throw std::runtime_error("stop_retry_interval_ms must be >= 50");
     }
 
+    if (!std::isfinite(startup_power_transition_timeout_sec_) ||
+        startup_power_transition_timeout_sec_ < 1.0 ||
+        startup_power_transition_timeout_sec_ > 120.0) {
+      throw std::runtime_error(
+        "startup_power_transition_timeout_sec must be within 1..120 seconds");
+    }
+
+    if (!std::isfinite(shutdown_poweroff_timeout_sec_) ||
+        shutdown_poweroff_timeout_sec_ < 1.0 ||
+        shutdown_poweroff_timeout_sec_ > 12.0) {
+      throw std::runtime_error("shutdown_poweroff_timeout_sec must be 1..12s");
+    }
     if (!std::isfinite(stop_wait_timeout_sec_) ||
         stop_wait_timeout_sec_ <= 0.0)
     {
@@ -506,6 +775,9 @@ private:
     ACCEPTED,
     BUSY,
     RATE_LIMITED,
+    ALREADY_STOPPED,
+    ALREADY_REQUESTED,
+    WAITING_FOR_PREVIOUS,
     FAILED
   };
 
@@ -542,7 +814,7 @@ private:
     if (!safe_stop_latched_) {
       safe_stop_latched_ = true;
       safe_stop_reason_ = reason;
-      stop_attempt_initialized_.fill(false);
+      // Do not clear the one-shot STOP gate here: that would resend STOP.
       RCLCPP_ERROR(
         this->get_logger(),
         "[SAFE STOP LATCH] %s. All new motion commands are inhibited until "
@@ -590,110 +862,322 @@ private:
     }
   }
 
-  bool stop_retry_due(int axis)
+  // Each call queries the PLC Function Block, not just the ADS transport.
+  // Never assume a successful ADS method invocation means the FB is Done.
+  bool read_stop_status(int axis, FunctionStatus & out)
   {
-    if (axis < 1 || axis > 3) {
+    out = {};
+    const int32_t rc = plc_fb_reader_.read_stop(axis, out) ? NO_ERR_TcMCFUN : UNKNOWN_ERR_TcMCFUN;
+    if (rc != NO_ERR_TcMCFUN) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[PLC STATUS] Axis%d Stop_Status ADS failed: 0x%X", axis,
+        static_cast<unsigned int>(rc));
       return false;
     }
-
-    const auto now = std::chrono::steady_clock::now();
-    const std::size_t idx = static_cast<std::size_t>(axis);
-
-    if (!stop_attempt_initialized_[idx]) {
-      stop_attempt_initialized_[idx] = true;
-      last_stop_attempt_tp_[idx] = now;
-      return true;
-    }
-
-    const double elapsed_ms =
-      std::chrono::duration<double, std::milli>(
-        now - last_stop_attempt_tp_[idx]).count();
-
-    if (elapsed_ms < stop_retry_interval_ms_) {
-      return false;
-    }
-
-    last_stop_attempt_tp_[idx] = now;
     return true;
   }
 
+  bool read_move_status(int axis, FunctionStatus & out)
+  {
+    out = {};
+    const int32_t rc = plc_fb_reader_.read_move(axis, out) ? NO_ERR_TcMCFUN : UNKNOWN_ERR_TcMCFUN;
+    if (rc != NO_ERR_TcMCFUN) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[PLC STATUS] Axis%d MoveVelocity_Status ADS failed: 0x%X", axis,
+        static_cast<unsigned int>(rc));
+      return false;
+    }
+    return true;
+  }
+
+  // Normal idle: no PLC job, no Stop lock, no Move FB in progress.
+  // Used ONLY when the desired power mode already matches. This does not
+  // authorize PowerDisable while bNotMoving is false.
+  bool plc_idle_for_existing_power(const std::array<AxisStatus, 3> & status)
+  {
+    for (int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+      const auto & s = status[static_cast<std::size_t>(axis - 1)];
+      if (s.bError || s.bHasJob || !s.bNotMoving ||
+          !std::isfinite(s.lActVelocity) ||
+          std::fabs(s.lActVelocity / velocity_scale_) > stop_suppress_velocity_mps_) {
+        RCLCPP_WARN(this->get_logger(),
+          "[PLC IDLE] Axis%d not idle: HasJob=%d NM=%d speed=%.4f m/s",
+          axis, s.bHasJob ? 1 : 0, s.bNotMoving ? 1 : 0,
+          s.lActVelocity / velocity_scale_);
+        return false;
+      }
+      if (!s.bControlLoopClosed) {
+        // A disabled axis has no active drive controller.  Some PLC
+        // implementations reject Function Block status queries on disabled
+        // axes; there must still be no HasJob, velocity, or error.
+        continue;
+      }
+      FunctionStatus stop{}, move{};
+      if (!read_stop_status(axis, stop) || !read_move_status(axis, move)) return false;
+      if (stop.bError || stop.bBusy || move.bError ||
+          (!s.bNotMoving && move.bBusy)) {
+        RCLCPP_WARN(this->get_logger(),
+          "[PLC IDLE] Axis%d FB: STOP busy=%d done=%d err=%d(0x%X), "
+          "MOVE busy=%d done=%d err=%d(0x%X)",
+          axis, stop.bBusy, stop.bDone, stop.bError,
+          static_cast<unsigned int>(stop.nError),
+          move.bBusy, move.bDone, move.bError,
+          static_cast<unsigned int>(move.nError));
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // MC_MoveVelocity may stay Busy/Active during valid continuous motion.
+  // A new speed may supersede it only after its minimum ramp/settle window
+  // and the *old* commanded speed has been measured stably (or FB Done).
+  // The last accepted target, not the new incoming target, is compared.
+  bool previous_command_window_elapsed(int axis, double ramp_ms)
+  {
+    if (axis < 1 || axis > 3) return false;
+    const auto idx = static_cast<std::size_t>(axis);
+    if (!last_accepted_move_initialized_[idx]) return true;
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(
+      now - last_accepted_move_tp_[idx]).count();
+    if (elapsed_ms < ramp_ms + ads_command_settle_extra_ms_) return false;
+
+    FunctionStatus st{};
+    if (!read_move_status(axis, st)) return false;
+    if (st.bError) {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[PLC MOVE ERROR] Axis%d code=0x%X", axis,
+        static_cast<unsigned int>(st.nError));
+      enter_safe_stop(std::string("PLC MoveVelocity_Status error Axis") +
+        std::to_string(axis));
+      safe_stop_active_ = false; // Do not blindly STOP a faulted FB.
+      return false;
+    }
+    if (!st.bBusy || st.bDone) {
+      move_feedback_stable_initialized_[idx] = false;
+      return true;
+    }
+
+    // Busy=1 alone is not a fault. Reconcile with *actual* motion feedback.
+    std::array<AxisStatus, 3> axes{};
+    if (!read_axis_status(axes) || has_any_fault(axes)) return false;
+    const auto & feedback = axes[idx - 1];
+    const double sign = axis == left_wheel_axis_ ? left_wheel_sign_ :
+      (axis == right_wheel_axis_ ? right_wheel_sign_ : rail_sign_);
+    const double actual = feedback.lActVelocity / velocity_scale_ * sign;
+    const double expected = last_accepted_target_mps_[idx];
+    const double tolerance = std::max(0.005, std::fabs(expected) * 0.05);
+    if (!feedback.bControlLoopClosed || !std::isfinite(actual) ||
+        std::fabs(actual - expected) > tolerance) {
+      move_feedback_stable_initialized_[idx] = false;
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[PLC MOVE WAIT] Axis%d Busy=1 Done=%d ACT=%+.4f TARGET=%+.4f m/s",
+        axis, st.bDone ? 1 : 0, actual, expected);
+      return false;
+    }
+    if (!move_feedback_stable_initialized_[idx]) {
+      move_feedback_stable_since_[idx] = now;
+      move_feedback_stable_initialized_[idx] = true;
+      return false;
+    }
+    // Require repeated matching measurements over 250 ms, not one sample.
+    return std::chrono::duration<double, std::milli>(
+      now - move_feedback_stable_since_[idx]).count() >= 250.0;
+  }
+
+  // An MC_Stop FB may return to its idle state (Busy=0, Done=0,
+  // Error=0) after the Execute edge is released.  Requiring Done=1
+  // permanently therefore deadlocks the next MoveVelocity.  However,
+  // Busy=0 alone is NOT proof that the mechanical axis is stationary:
+  // require fresh PLC axis feedback and a short, continuous standstill.
+  bool previous_stop_window_elapsed(int axis, double stop_ramp_ms)
+  {
+    if (axis < 1 || axis > 3) return false;
+    const auto idx = static_cast<std::size_t>(axis);
+    if (!last_stop_tx_initialized_[idx]) return true;
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(
+      now - last_stop_tx_tp_[idx]).count();
+    if (elapsed_ms < stop_ramp_ms + ads_command_settle_extra_ms_) {
+      stop_idle_confirm_initialized_[idx] = false;
+      return false;
+    }
+
+    FunctionStatus st{};
+    if (!read_stop_status(axis, st)) {
+      stop_idle_confirm_initialized_[idx] = false;
+      return false;
+    }
+
+    std::array<AxisStatus, 3> statuses{};
+    if (!read_axis_status(statuses) || has_any_fault(statuses)) {
+      stop_idle_confirm_initialized_[idx] = false;
+      return false;
+    }
+    const auto & feedback = statuses[idx - 1];
+    const double actual_mps = feedback.lActVelocity / velocity_scale_;
+    const bool confirmed_standstill =
+      !feedback.bError && !feedback.bHasJob && feedback.bNotMoving &&
+      !feedback.bMovingFw && !feedback.bMovingBw &&
+      std::isfinite(actual_mps) &&
+      std::fabs(actual_mps) <= stopped_velocity_threshold_mps_;
+
+    // Done may have already fallen to zero on FB reset, so it is
+    // informational here.  Both Busy=0 and verified axis standstill are
+    // mandatory, even if Done=1 (do not trust a stale Done sample).
+    if (st.bError || st.bBusy || !confirmed_standstill) {
+      stop_idle_confirm_initialized_[idx] = false;
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[PLC STOP WAIT] Axis%d Busy=%d Done=%d Error=%d(0x%X) "
+        "NM=%d Job=%d FW=%d BW=%d actual=%+.4f m/s; no new command",
+        axis, st.bBusy ? 1 : 0, st.bDone ? 1 : 0, st.bError ? 1 : 0,
+        static_cast<unsigned int>(st.nError),
+        feedback.bNotMoving ? 1 : 0, feedback.bHasJob ? 1 : 0,
+        feedback.bMovingFw ? 1 : 0, feedback.bMovingBw ? 1 : 0, actual_mps);
+      return false;
+    }
+
+    // Avoid passing a momentary/stale zero-speed sample.  The control
+    // loop must observe the STOP FB idle and axis stopped for >=200ms.
+    constexpr double kStopIdleStableMs = 200.0;
+    if (!stop_idle_confirm_initialized_[idx]) {
+      stop_idle_confirm_since_[idx] = now;
+      stop_idle_confirm_initialized_[idx] = true;
+      return false;
+    }
+    if (std::chrono::duration<double, std::milli>(
+        now - stop_idle_confirm_since_[idx]).count() < kStopIdleStableMs) {
+      return false;
+    }
+    return true;
+  }
+
+  bool all_previous_stops_settled()
+  {
+    return previous_stop_window_elapsed(left_wheel_axis_, wheel_ramp_ms_) &&
+      previous_stop_window_elapsed(right_wheel_axis_, wheel_ramp_ms_) &&
+      previous_stop_window_elapsed(rail_axis_, rail_ramp_ms_);
+  }
+
+  // Used ONLY for power handover / confirmed standstill, not for new MOVE.
+  // MC_MoveVelocity Busy can remain asserted during continuous motion; it
+  // cannot substitute for physical standstill and released STOP FB.
+  bool all_previous_moves_settled()
+  {
+    std::array<AxisStatus, 3> status{};
+    if (!read_axis_status(status) || has_any_fault(status) ||
+        !all_axes_physically_stopped(status)) return false;
+    for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+      const auto & s = status[static_cast<std::size_t>(axis - 1)];
+      if (s.bHasJob) return false;
+      if (!s.bControlLoopClosed) continue;
+      FunctionStatus stop{};
+      if (!read_stop_status(axis, stop) || stop.bError || stop.bBusy) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void note_move_accepted(int axis, double accepted_target_mps)
+  {
+    if (axis < 1 || axis > 3) {return;}
+    const auto idx = static_cast<std::size_t>(axis);
+    last_accepted_move_tp_[idx] = std::chrono::steady_clock::now();
+    last_accepted_move_initialized_[idx] = true;
+    last_accepted_target_mps_[idx] = accepted_target_mps;
+    move_feedback_stable_initialized_[idx] = false;
+    // Only an actual new, accepted non-zero MOVE re-arms the one-STOP gate.
+    stop_attempt_initialized_[idx] = false;
+    // The previous STOP was settled before this MOVE was admitted; avoid
+    // treating its old timestamp as a pending STOP in subsequent cycles.
+    last_stop_tx_initialized_[idx] = false;
+    stop_idle_confirm_initialized_[idx] = false;
+  }
+
+  // IMPORTANT: NEVER call StopMove on a stationary axis, and NEVER resend a
+  // StopMove (whether it succeeded or returned BUSY) for the same move.
   StopRequestResult request_axis_stop(
     int axis,
     double ramp_ms,
     const char * context)
   {
-    // Centralized STOP guard: protects shutdown, watchdog and future callers
-    // against issuing MC_Stop/StopMove while an error latch is active.
-    if (fault_latched_) {
+    if (diagnostic_read_only_) return StopRequestResult::FAILED;
+    if (axis < 1 || axis > 3 || !ads_connected_ || fault_latched_) {
       return StopRequestResult::FAILED;
     }
-    if (!stop_retry_due(axis)) {
-      return StopRequestResult::RATE_LIMITED;
+    const std::size_t idx = static_cast<std::size_t>(axis);
+    std::array<AxisStatus, 3> status{};
+    if (!read_axis_status(status) || has_any_fault(status)) {
+      // No command can be safely derived from missing/faulted feedback.
+      return StopRequestResult::FAILED;
+    }
+    const auto & axis_status = status[idx - 1];
+    const double actual_mps = std::fabs(axis_status.lActVelocity / velocity_scale_);
+    const bool not_moving = axis_status.bNotMoving;
+
+    if (not_moving && actual_mps <= stopped_velocity_threshold_mps_) {
+      return StopRequestResult::ALREADY_STOPPED;
+    }
+    if (stop_attempt_initialized_[idx]) {
+      return StopRequestResult::ALREADY_REQUESTED;
+    }
+    // Some drives report bNotMoving=false while measured velocity is 0.
+    // Never send STOP blindly in that condition; block handovers/re-arms
+    // until bNotMoving confirms a true stationary state.
+    if (actual_mps <= stop_suppress_velocity_mps_) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 3000,
+        "[STOP HELD] Axis%d speed near zero but bNotMoving=%d. "
+        "No StopMove; awaiting valid standstill feedback (%s)",
+        axis, not_moving ? 1 : 0, context);
+      return StopRequestResult::WAITING_FOR_PREVIOUS;
+    }
+    // STOP cancels continuous MoveVelocity.  A running MOVE FB can remain
+    // Busy indefinitely; DO NOT wait for ramp+settle or MOVE Busy=0 here.
+    // The PLC STOP FB state and the per-motion one-shot latch are the guards.
+    // A previous STOP can still be locked in the PLC even without this run's
+    // one-shot flag (e.g. after ROS restart). Do not dispatch another STOP.
+    FunctionStatus plc_stop{};
+    if (!read_stop_status(axis, plc_stop) || plc_stop.bBusy || plc_stop.bError) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[STOP HELD] Axis%d PLC Stop_Status busy/error; no duplicate STOP", axis);
+      return StopRequestResult::WAITING_FOR_PREVIOUS;
     }
 
-    RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 250,
-      "[STOP TX] Axis%d context=%s",
-      axis, context);
-
-    const int32_t result =
-      StopMove(
-        static_cast<uint32_t>(axis),
-        ramp_ms,
-        jerk_percent_);
-
+    // One attempt per accepted move: set BEFORE the API call to ensure that
+    // a callback/timer re-entry cannot cause another STOP.
+    stop_attempt_initialized_[idx] = true;
+    last_stop_tx_initialized_[idx] = true;
+    stop_idle_confirm_initialized_[idx] = false;
+    last_stop_tx_tp_[idx] = std::chrono::steady_clock::now();
+    RCLCPP_INFO(this->get_logger(),
+      "[STOP TX ONCE] Axis%d context=%s measured=%.4f m/s",
+      axis, context, actual_mps);
+    const int32_t result = StopMove(
+      static_cast<uint32_t>(axis), ramp_ms, jerk_percent_);
     if (result == NO_ERR_TcMCFUN) {
-      if (log_motion_commands_) {
-        RCLCPP_INFO(
-          this->get_logger(),
-          "[SAFE STOP] StopMove accepted: Axis%d (%s)",
-          axis,
-          context);
-      }
       return StopRequestResult::ACCEPTED;
     }
 
+    // A BUSY response is not an invitation to retry. Keep drive power
+    // untouched; block new motion and require operator/PLC safe recovery.
     if (is_ads_device_busy(result)) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(),
-        *this->get_clock(),
-        2000,
-        "[SAFE STOP] Axis%d StopMove BUSY (0x98110708) during %s. "
-        "Keeping Controller Enable ON and retrying every %.0f ms.",
-        axis,
-        context,
-        stop_retry_interval_ms_);
-      // BUSY may be transient, but a wheel may still be executing its last
-      // MoveVelocity. Block ALL new wheel MoveVelocity until both wheels have
-      // physically stopped. This temporary state clears automatically.
-      if (
-        !shutting_down_ && !safe_stop_latched_ && !fault_latched_ &&
-        (axis == left_wheel_axis_ || axis == right_wheel_axis_))
-      {
-        if (!wheel_stop_pending_) {
-          wheel_stop_pending_ = true;
-          wheel_stop_pending_since_ = std::chrono::steady_clock::now();
-          RCLCPP_WARN(
-            this->get_logger(),
-            "[STOP_PENDING] Wheel StopMove returned BUSY. "
-            "Blocking new wheel MoveVelocity until both wheels stop.");
-        }
-      }
-      return StopRequestResult::BUSY;
+      RCLCPP_ERROR(this->get_logger(),
+        "[STOP BUSY NO RETRY] Axis%d context=%s: 0x98110708. "
+        "No more StopMove will be sent; inspect PLC MC_Stop/MC_Halt state.",
+        axis, context);
+    } else {
+      RCLCPP_ERROR(this->get_logger(),
+        "[STOP FAILED NO RETRY] Axis%d context=%s result=0x%X",
+        axis, context, static_cast<unsigned int>(result));
     }
-
-    RCLCPP_ERROR_THROTTLE(
-      this->get_logger(),
-      *this->get_clock(),
-      2000,
-      "[SAFE STOP] Axis%d StopMove failed during %s: 0x%X",
-      axis,
-      context,
-      static_cast<unsigned int>(result));
-    // A single StopMove transport/API failure must not permanently lock normal
-    // navigation.  The caller keeps the zero target and retries STOP.  Actual
-    // axis faults are latched separately in process_axis_status().
-    return StopRequestResult::FAILED;
+    if (!safe_stop_latched_ && !shutting_down_) {
+      enter_safe_stop(std::string("StopMove failed Axis") + std::to_string(axis));
+    }
+    // process_safe_stop also uses this one-shot gate, so it cannot re-send.
+    return is_ads_device_busy(result) ? StopRequestResult::BUSY
+                                      : StopRequestResult::FAILED;
   }
 
   bool axis_is_physically_stopped(const AxisStatus & status, double sign) const
@@ -723,6 +1207,152 @@ private:
         rail_sign_);
   }
 
+  // Ctrl+C / normal node destruction: STOP if moving, then disable each
+  // axis INDEPENDENTLY after verified NC standstill.  Never power-disable an
+  // axis whose job, direction or MC_Stop state remains unresolved.
+  // No Reset and no auto re-arm is performed here.
+  void shutdown_stop_then_poweroff()
+  {
+    clear_motion_requests();
+    axis_snapshot_valid_ = false;
+    const auto timeout = std::max(1.0, shutdown_poweroff_timeout_sec_);
+    const auto started = std::chrono::steady_clock::now();
+    std::array<bool, 4> verified_off{{false, false, false, false}};
+    std::array<bool, 4> disable_sent{{false, false, false, false}};
+    std::array<bool, 4> stable_initialized{{false, false, false, false}};
+    std::array<std::chrono::steady_clock::time_point, 4> stable_since{};
+    std::array<bool, 4> stop_logged{{false, false, false, false}};
+    const std::array<int, 3> axes{{left_wheel_axis_, right_wheel_axis_, rail_axis_}};
+    RCLCPP_WARN(this->get_logger(),
+      "[SHUTDOWN BEGIN] Request STOP, then verified Power OFF for Axis1/2/3 "
+      "(timeout %.1fs). Hardware E-stop remains independent.", timeout);
+
+    while (std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - started).count() < timeout) {
+      // Force a fresh ADS snapshot: never use a cached zero-speed sample to
+      // authorize a drive power transition.
+      axis_snapshot_valid_ = false;
+      std::array<AxisStatus, 3> state{};
+      if (!read_axis_status(state)) {
+        std::this_thread::sleep_for(100ms);
+        continue;
+      }
+
+      bool all_verified = true;
+      for (const int axis : axes) {
+        if (axis < 1 || axis > 3) {
+          all_verified = false;
+          continue;
+        }
+        const auto idx = static_cast<std::size_t>(axis);
+        const auto & s = state[idx - 1];
+        if (verified_off[idx]) continue;
+        if (!s.bControlLoopClosed) {
+          verified_off[idx] = true;
+          RCLCPP_INFO(this->get_logger(),
+            "[SHUTDOWN OFF CONFIRMED] Axis%d Ready=0%s", axis,
+            disable_sent[idx] ? " after PowerDisable" : " (already OFF)");
+          continue;
+        }
+        all_verified = false;
+        if (disable_sent[idx]) {
+          // PowerDisable command was sent.  Wait for actual READY=0.
+          continue;
+        }
+
+        const double vel_mps = std::fabs(s.lActVelocity / velocity_scale_);
+        const bool nc_stopped = !s.bError && s.bNotMoving &&
+          !s.bHasJob && !s.bMovingFw && !s.bMovingBw &&
+          std::isfinite(vel_mps) && vel_mps <= stopped_velocity_threshold_mps_;
+        if (!nc_stopped) {
+          stable_initialized[idx] = false;
+          // Normal decelerating axis: request one STOP using the original
+          // one-shot/busy guard.  Do not invent a STOP for Job=1 + speed=0:
+          // that case needs operator stale-job recovery and cannot be used
+          // to justify removing drive enable.
+          if (!s.bError && std::isfinite(vel_mps) &&
+              vel_mps > stop_suppress_velocity_mps_) {
+            (void)request_axis_stop(
+              axis, axis == rail_axis_ ? rail_ramp_ms_ : wheel_ramp_ms_,
+              "bringup shutdown");
+          } else if (!stop_logged[idx]) {
+            stop_logged[idx] = true;
+            RCLCPP_ERROR(this->get_logger(),
+              "[SHUTDOWN WAIT] Axis%d Power ON, NC not idle: "
+              "Error=%d NotMoving=%d HasJob=%d FW=%d BW=%d speed=%.5f m/s. "
+              "Keeping Power ON until real standstill (no bypass).",
+              axis, s.bError ? 1 : 0, s.bNotMoving ? 1 : 0,
+              s.bHasJob ? 1 : 0, s.bMovingFw ? 1 : 0,
+              s.bMovingBw ? 1 : 0, vel_mps);
+          }
+          continue;
+        }
+        FunctionStatus stop{};
+        if (!read_stop_status(axis, stop) || stop.bBusy || stop.bError) {
+          stable_initialized[idx] = false;
+          continue;
+        }
+        // Any STOP sent in this run must get its ramp+ADS settle window.
+        if (last_stop_tx_initialized_[idx] &&
+            std::chrono::duration<double, std::milli>(
+              std::chrono::steady_clock::now() - last_stop_tx_tp_[idx]).count() <
+                (axis == rail_axis_ ? rail_ramp_ms_ : wheel_ramp_ms_) +
+                ads_command_settle_extra_ms_) {
+          stable_initialized[idx] = false;
+          continue;
+        }
+        // Require >=200ms continuous NC idle + Stop_FB not busy.
+        const auto now = std::chrono::steady_clock::now();
+        if (!stable_initialized[idx]) {
+          stable_initialized[idx] = true;
+          stable_since[idx] = now;
+          continue;
+        }
+        if (std::chrono::duration<double, std::milli>(
+              now - stable_since[idx]).count() < 200.0) continue;
+
+        RCLCPP_WARN(this->get_logger(),
+          "[SHUTDOWN POWER OFF TX] Axis%d NC idle verified; sending PowerDisable", axis);
+        // Mark attempted BEFORE synchronous RPC; never spam PowerDisable.
+        disable_sent[idx] = true;
+        if (!power_disable_axis(axis)) {
+          RCLCPP_ERROR(this->get_logger(),
+            "[SHUTDOWN POWER OFF FAILED] Axis%d ADS command rejected; "
+            "do not assume drive disabled", axis);
+        }
+      }
+      if (all_verified) break;
+      std::this_thread::sleep_for(100ms);
+    }
+    // Final fresh feedback; independent of ACK return codes.
+    axis_snapshot_valid_ = false;
+    std::array<AxisStatus, 3> final_state{};
+    if (read_axis_status(final_state)) {
+      for (const int axis : axes) {
+        if (axis < 1 || axis > 3) continue;
+        const auto & s = final_state[static_cast<std::size_t>(axis - 1)];
+        if (!s.bControlLoopClosed) {
+          if (!verified_off[static_cast<std::size_t>(axis)]) {
+            RCLCPP_INFO(this->get_logger(),
+              "[SHUTDOWN OFF CONFIRMED] Axis%d Ready=0 (final snapshot)", axis);
+          }
+        } else {
+          RCLCPP_ERROR(this->get_logger(),
+            "[SHUTDOWN INCOMPLETE] Axis%d STILL POWER ON: Ready=1 "
+            "NM=%d Job=%d FW=%d BW=%d Error=%d Actual=%.5f m/s. "
+            "PLC safety stop / operator intervention REQUIRED.",
+            axis, s.bNotMoving ? 1 : 0, s.bHasJob ? 1 : 0,
+            s.bMovingFw ? 1 : 0, s.bMovingBw ? 1 : 0,
+            s.bError ? 1 : 0, s.lActVelocity / velocity_scale_);
+        }
+      }
+    } else {
+      RCLCPP_ERROR(this->get_logger(),
+        "[SHUTDOWN UNVERIFIED] Final ADS feedback unavailable. "
+        "Do not assume any motor is OFF.");
+    }
+  }
+
   bool wait_until_all_axes_stopped(
     double timeout_sec,
     const std::string & reason)
@@ -734,7 +1364,7 @@ private:
         !has_any_fault(fault_status) && all_axes_physically_stopped(fault_status);
     }
     clear_motion_requests();
-    stop_attempt_initialized_.fill(false);
+    // Keep the per-axis STOP one-shot gate even across blocking waits.
 
     const auto start = std::chrono::steady_clock::now();
 
@@ -756,7 +1386,8 @@ private:
         const bool rail_stopped =
           axis_is_physically_stopped(rail, rail_sign_);
 
-        if (left_stopped && right_stopped && rail_stopped) {
+        if (left_stopped && right_stopped && rail_stopped &&
+            all_previous_stops_settled() && all_previous_moves_settled()) {
           applied_left_mps_ = 0.0;
           applied_right_mps_ = 0.0;
           applied_rail_mps_ = 0.0;
@@ -856,6 +1487,7 @@ private:
 
   bool power_enable_axis(int axis)
   {
+    if (diagnostic_read_only_) return false;
     const int32_t result = PowerEnable(static_cast<uint32_t>(axis));
     if (result != NO_ERR_TcMCFUN) {
       RCLCPP_ERROR(
@@ -872,6 +1504,7 @@ private:
 
   bool power_disable_axis(int axis)
   {
+    if (diagnostic_read_only_) return false;
     const int32_t result = PowerDisable(static_cast<uint32_t>(axis));
     if (result != NO_ERR_TcMCFUN) {
       RCLCPP_ERROR(
@@ -888,6 +1521,7 @@ private:
 
   void power_disable_all_axes()
   {
+    if (diagnostic_read_only_) return;
     for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
       const int32_t result = PowerDisable(static_cast<uint32_t>(axis));
       if (result != NO_ERR_TcMCFUN) {
@@ -938,45 +1572,156 @@ private:
     return false;
   }
 
+  // Read-only startup diagnosis: distinguish mismatched power topology
+  // from an Axis1 NC job/MC_Stop lock. This does not send any PLC commands.
+  void log_startup_axis_diagnostics(const std::array<AxisStatus, 3> & status)
+  {
+    const bool target_wheels = wheel_mode_requested();
+    const bool target_rail = rail_mode_requested();
+    const bool actual_left = status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool actual_right = status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool actual_rail = status[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed;
+    RCLCPP_WARN(this->get_logger(),
+      "[STARTUP DIAG POWER] desired Wheel=%d Rail=%d | "
+      "PLC Axis%d=%d Axis%d=%d Axis%d=%d | dual_opt_in=%d",
+      target_wheels ? 1 : 0, target_rail ? 1 : 0,
+      left_wheel_axis_, actual_left ? 1 : 0,
+      right_wheel_axis_, actual_right ? 1 : 0,
+      rail_axis_, actual_rail ? 1 : 0,
+      allow_simultaneous_drive_ ? 1 : 0);
+    for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+      const auto & a = status[static_cast<std::size_t>(axis-1)];
+      const double act = a.lActVelocity / velocity_scale_;
+      RCLCPP_WARN(this->get_logger(),
+        "[STARTUP DIAG AXIS%d] Ready=%d NM=%d Job=%d FW=%d BW=%d "
+        "Error=%d(0x%X) Actual=%.6f m/s",
+        axis, a.bControlLoopClosed ? 1 : 0,
+        a.bNotMoving ? 1 : 0, a.bHasJob ? 1 : 0,
+        a.bMovingFw ? 1 : 0, a.bMovingBw ? 1 : 0,
+        a.bError ? 1 : 0, static_cast<unsigned int>(a.nErrorCode), act);
+      if (!a.bControlLoopClosed) continue;
+      FunctionStatus stop{}, move{};
+      const bool stop_ok = read_stop_status(axis, stop);
+      const bool move_ok = read_move_status(axis, move);
+      if (!stop_ok || !move_ok) {
+        RCLCPP_WARN(this->get_logger(),
+          "[STARTUP DIAG FB%d] Unable to read PLC FB status "
+          "StopRead=%d MoveRead=%d; no motion authorization",
+          axis, stop_ok ? 1 : 0, move_ok ? 1 : 0);
+        continue;
+      }
+      RCLCPP_WARN(this->get_logger(),
+        "[STARTUP DIAG FB%d] Stop(Busy=%d Done=%d Error=%d Code=0x%X) "
+        "Move(Busy=%d Done=%d Error=%d Code=0x%X)",
+        axis, stop.bBusy ? 1 : 0, stop.bDone ? 1 : 0,
+        stop.bError ? 1 : 0, static_cast<unsigned int>(stop.nError),
+        move.bBusy ? 1 : 0, move.bDone ? 1 : 0,
+        move.bError ? 1 : 0, static_cast<unsigned int>(move.nError));
+    }
+  }
+
   bool configure_power_for_current_state_blocking(double timeout_sec)
   {
-    // Vendor-safe order:
-    //   StopMove -> bNotMoving + near-zero velocity -> PowerDisable -> PowerEnable.
+    std::array<AxisStatus, 3> status{};
+    if (!read_axis_status(status) || has_any_fault(status)) {
+      RCLCPP_ERROR(this->get_logger(), "[STARTUP] Fresh AxisStatus unavailable or faulted.");
+      return false;
+    }
+    const bool left_ready = status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool right_ready = status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool rail_ready = status[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed;
+    log_startup_axis_diagnostics(status);
+    // Dual mode NEVER powers on both drive groups automatically at startup.
+    // Start with legacy wheel/rail power selection. The operator must enable
+    // the second group explicitly while proven stopped.
+    const bool expected_wheels = wheel_mode_requested();
+    const bool expected_rail = rail_mode_requested();
+
+    // Experimental dual mode must NEVER power-cycle a valid already-enabled
+    // combination at startup. Preserve whichever group(s) the PLC currently
+    // reports enabled; never turn both on automatically at node creation.
+    if (allow_simultaneous_drive_) {
+      if (left_ready != right_ready || (!left_ready && !rail_ready) ||
+          !plc_idle_for_existing_power(status)) {
+        RCLCPP_ERROR(this->get_logger(),
+          "[DUAL STARTUP BLOCKED] power mismatch, no enabled drive, or PLC "
+          "standstill/FB state not confirmed. No automatic Power/STOP sent.");
+        return false;
+      }
+      wheel_axes_enabled_ = left_ready && right_ready;
+      rail_axis_enabled_ = rail_ready;
+      RCLCPP_INFO(this->get_logger(),
+        "[DUAL STARTUP] Preserved Wheel=%d Rail=%d; no Power/STOP command. "
+        "Use E/Y only at confirmed standstill to change enables.",
+        wheel_axes_enabled_ ? 1 : 0, rail_axis_enabled_ ? 1 : 0);
+      return true;
+    }
+
+    // A restart is NOT grounds for STOP/Power cycling. Some PLCs report
+    // bNotMoving=0 even with zero velocity and no HasJob; verify both
+    // individual PLC FBs are idle before accepting an already-correct mode.
+    // This path never authorizes PowerDisable or a mechanical mode switch.
+    if (left_ready == expected_wheels && right_ready == expected_wheels &&
+        rail_ready == expected_rail) {
+      wheel_axes_enabled_ = left_ready && right_ready;
+      rail_axis_enabled_ = rail_ready;
+      if (!plc_idle_for_existing_power(status)) {
+        RCLCPP_ERROR(this->get_logger(),
+          "[STARTUP BLOCKED] Power already matches, but the PLC still reports "
+          "an active job/Busy/unknown status. No STOP or Power command sent.");
+        return false;
+      }
+      RCLCPP_INFO(this->get_logger(),
+        "[STARTUP] Existing power mode matches %s; no STOP or power cycling. "
+        "PLC idle confirmed.", rail_state_.c_str());
+      return true;
+    }
+
+    // Changing power requires stricter standstill evidence (bNotMoving +
+    // near-zero velocity), never inferred from velocity alone.
+    RCLCPP_ERROR(this->get_logger(),
+      "[STARTUP POWER MISMATCH] Expected wheels=%d rail=%d, but actual "
+      "Axis%d=%d Axis%d=%d Axis%d=%d. Waiting up to %.1fs for genuine "
+      "NC standstill before any Power transition. Check Axis1 HasJob/STOP FB; "
+      "zero measured speed does NOT mean bNotMoving=1.",
+      expected_wheels ? 1 : 0, expected_rail ? 1 : 0,
+      left_wheel_axis_, left_ready ? 1 : 0,
+      right_wheel_axis_, right_ready ? 1 : 0,
+      rail_axis_, rail_ready ? 1 : 0, timeout_sec);
     if (!wait_until_all_axes_stopped(timeout_sec, "power-mode handover")) {
-      RCLCPP_ERROR(
-        this->get_logger(),
-        "Power handover aborted because an axis did not stop.");
+      RCLCPP_ERROR(this->get_logger(),
+        "[STARTUP BLOCKED] Power change requires confirmed standstill; "
+        "no unsafe PowerDisable/Enable performed.");
       return false;
     }
 
-    power_disable_all_axes();
-
-    if (rail_mode_requested()) {
-      if (!power_enable_axis(rail_axis_)) {
-        return false;
-      }
-      if (!wait_for_expected_power_state(false, true, timeout_sec)) {
-        RCLCPP_ERROR(
-          this->get_logger(),
-          "Power state timeout: expected Wheels=DISABLE, Rail=ENABLE for rail_state=%s",
-          rail_state_.c_str());
-        return false;
-      }
-    } else {
-      if (!power_enable_axis(left_wheel_axis_) ||
-          !power_enable_axis(right_wheel_axis_))
-      {
-        return false;
-      }
-      if (!wait_for_expected_power_state(true, false, timeout_sec)) {
-        RCLCPP_ERROR(
-          this->get_logger(),
-          "Power state timeout: expected Wheels=ENABLE, Rail=DISABLE for rail_state=%s",
-          rail_state_.c_str());
-        return false;
-      }
+    // Disable only axes that actually need it. Do not resend identical Power
+    // commands to MC_Power in an otherwise healthy PLC.
+    if (left_ready && !expected_wheels && !power_disable_axis(left_wheel_axis_)) return false;
+    if (right_ready && !expected_wheels && !power_disable_axis(right_wheel_axis_)) return false;
+    if (rail_ready && !expected_rail && !power_disable_axis(rail_axis_)) return false;
+    // Wait for each PowerDisable result before enabling an alternative drive.
+    const auto disable_start = std::chrono::steady_clock::now();
+    while (true) {
+      std::array<AxisStatus, 3> chk{};
+      if (read_axis_status(chk) &&
+          (expected_wheels ||
+            (!chk[static_cast<std::size_t>(left_wheel_axis_-1)].bControlLoopClosed &&
+             !chk[static_cast<std::size_t>(right_wheel_axis_-1)].bControlLoopClosed)) &&
+          (expected_rail || !chk[static_cast<std::size_t>(rail_axis_-1)].bControlLoopClosed)) break;
+      if (std::chrono::duration<double>(std::chrono::steady_clock::now() -
+          disable_start).count() > timeout_sec) return false;
+      std::this_thread::sleep_for(100ms);
     }
-
+    if (expected_rail && !rail_ready && !power_enable_axis(rail_axis_)) return false;
+    if (expected_wheels) {
+      if (!left_ready && !power_enable_axis(left_wheel_axis_)) return false;
+      if (!right_ready && !power_enable_axis(right_wheel_axis_)) return false;
+    }
+    if (!wait_for_expected_power_state(expected_wheels, expected_rail, timeout_sec)) {
+      RCLCPP_ERROR(this->get_logger(), "[STARTUP BLOCKED] Power feedback mismatch.");
+      return false;
+    }
     return true;
   }
 
@@ -986,12 +1731,9 @@ private:
   bool configure_power_after_fault_reset_without_stop(double timeout_sec)
   {
     std::array<AxisStatus, 3> status{};
-    if (!read_axis_status(status) || has_any_fault(status) ||
-        !all_axes_physically_stopped(status)) {
-      RCLCPP_ERROR(
-        this->get_logger(),
-        "[FAULT RESET] Power re-arm refused: axes are faulted, moving or feedback unavailable. "
-        "No StopMove() was transmitted.");
+    if (!read_axis_status(status) || has_any_fault(status)) {
+      RCLCPP_ERROR(this->get_logger(),
+        "[FAULT RESET] Axis state unavailable or a PLC fault remains; no STOP.");
       return false;
     }
 
@@ -1001,12 +1743,38 @@ private:
     const bool rail_ready =
       status[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed;
 
-    // Avoid unnecessary power cycling if the physical mode is already correct.
-    if (wheels_ready == wheel_mode_requested() &&
-        rail_ready == rail_mode_requested()) {
+    // Dual mode preserves any already-verified enabled combination; Reset
+    // must never silently disable the other drive group.
+    if (allow_simultaneous_drive_) {
+      const bool left_on =
+        status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed;
+      const bool right_on =
+        status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed;
+      if (left_on != right_on || (!wheels_ready && !rail_ready) ||
+          !plc_idle_for_existing_power(status)) {
+        return false;
+      }
       wheel_axes_enabled_ = wheels_ready;
       rail_axis_enabled_ = rail_ready;
       return true;
+    }
+
+    // Avoid unnecessary power cycling if the physical mode is already correct.
+    if (wheels_ready == wheel_mode_requested() &&
+        rail_ready == rail_mode_requested()) {
+      // Re-arm an unchanged Power state ONLY when the PLC has no job and
+      // both relevant FBs are idle.  Do not rely on bNotMoving alone.
+      if (!plc_idle_for_existing_power(status)) return false;
+      wheel_axes_enabled_ = wheels_ready;
+      rail_axis_enabled_ = rail_ready;
+      return true;
+    }
+
+    // Changing the physical drive enable state demands strict standstill.
+    if (!all_axes_physically_stopped(status)) {
+      RCLCPP_ERROR(this->get_logger(),
+        "[FAULT RESET] Power change blocked: bNotMoving/velocity inconclusive.");
+      return false;
     }
 
     power_disable_all_axes();
@@ -1039,22 +1807,33 @@ private:
 
     ads_connected_ = true;
     RCLCPP_INFO(this->get_logger(), "Connected to Beckhoff TwinCAT ADS.");
+    if (!plc_fb_reader_.open()) {
+      RCLCPP_ERROR(this->get_logger(),
+        "[PLC STATUS] Could not open read-only Stop/Move status handles; motion blocked.");
+      motion_ready_ = false;
+      return;
+    }
 
-    // Vendor-recommended mode:
-    // Do NOT poll ReadAxisStatus() from the ROS timer/thread.  Register the
-    // Beckhoff ADS notification once and use the asynchronously updated cache.
-    AxisStatus_Notification(&axis_status_notification_cache_);
-    axis_status_notification_registered_ = true;
-    axis_status_notification_registered_at_ = std::chrono::steady_clock::now();
+    // Vendor-provided ReadAxisStatus() performs a synchronous snapshot read.
+    // Avoid their asynchronous memcpy Notification cache's data race without
+    // editing any vendor file.  Poll at most once per 50 ms.
 
-    RCLCPP_INFO(
-      this->get_logger(),
-      "[ADS NOTIFY] AxisStatus notification registered: "
-      "MotionHandler.fbAxisHandler.starAxisStatus");
-
-    // The vendor sample waits while the notification updates axisStatusList.
-    // Give the first SERVERCYCLE samples time to arrive before startup checks.
-    std::this_thread::sleep_for(500ms);
+    // Wait for a real first ADS snapshot, not zero-initialized axis data.
+    // Do not start the motors if the PLC state cannot be read.
+    {
+      const auto begin = std::chrono::steady_clock::now();
+      std::array<AxisStatus, 3> first{};
+      while (!read_axis_status(first)) {
+        if (std::chrono::duration<double>(std::chrono::steady_clock::now() - begin)
+              .count() >= 3.0) {
+          RCLCPP_ERROR(this->get_logger(),
+            "[STARTUP] No readable ADS AxisStatus within 3 seconds. Motion blocked.");
+          motion_ready_ = false;
+          return;
+        }
+        std::this_thread::sleep_for(100ms);
+      }
+    }
 
     start_environment_sensor_notification();
 
@@ -1069,14 +1848,21 @@ private:
       return;
     }
 
-    if (!power_enable_on_start_) {
-      power_disable_all_axes();
-      wheel_axes_enabled_ = false;
-      rail_axis_enabled_ = false;
+    if (diagnostic_read_only_ || !power_enable_on_start_) {
       motion_ready_ = false;
-      RCLCPP_WARN(
-        this->get_logger(),
-        "power_enable_on_start=false. All axes remain disabled.");
+      RCLCPP_WARN(this->get_logger(),
+        "[STARTUP DIAGNOSTIC ONLY] diagnostic_read_only=%d, "
+        "power_enable_on_start=%d. ADS motor commands are blocked "
+        "only when diagnostic_read_only=1; existing PLC motor enables remain unchanged.",
+        diagnostic_read_only_ ? 1 : 0,
+        power_enable_on_start_ ? 1 : 0);
+      // Read-only FB/NC snapshot; do not attempt to recover or unlock MC_Stop.
+      if (read_axis_status(status)) {
+        log_startup_axis_diagnostics(status);
+      } else {
+        RCLCPP_ERROR(this->get_logger(),
+          "[STARTUP DIAGNOSTIC ONLY] AxisStatus read failed.");
+      }
       return;
     }
 
@@ -1084,8 +1870,14 @@ private:
     //   Wheel Axis1/2 ENABLE, Rail Axis3 DISABLE.
     // This directly enforces the vendor requirement that the rail motor is
     // disabled while the AGV approaches and climbs onto the rail.
-    if (!configure_power_for_current_state_blocking(5.0)) {
+    if (!configure_power_for_current_state_blocking(startup_power_transition_timeout_sec_)) {
       motion_ready_ = false;
+      std::array<AxisStatus, 3> blocked{};
+      if (read_axis_status(blocked)) {
+        RCLCPP_ERROR(this->get_logger(),
+          "[STARTUP DIAG] Re-read axis and FB states after startup failure:");
+        log_startup_axis_diagnostics(blocked);
+      }
       return;
     }
 
@@ -1111,8 +1903,8 @@ private:
 
   void begin_power_transition_for_state()
   {
-    // Allow the first STOP request of a new transition to be sent immediately.
-    stop_attempt_initialized_.fill(false);
+    // Do not reset the STOP one-shot gate here; the last command may still
+    // be executing. A successfully accepted MoveVelocity re-arms it.
 
     // Always clear stale motion when the mechanical drive mode changes.
     requested_linear_x_mps_ = 0.0;
@@ -1199,7 +1991,8 @@ private:
           }
         }
 
-        if (left_stopped && right_stopped) {
+        if (left_stopped && right_stopped &&
+            all_previous_stops_settled() && all_previous_moves_settled()) {
           power_transition_stage_ = PowerTransitionStage::DISABLE_WHEELS;
           power_stage_command_sent_ = false;
           RCLCPP_INFO(
@@ -1266,7 +2059,8 @@ private:
           }
         }
 
-        if (rail_stopped) {
+        if (rail_stopped &&
+            all_previous_stops_settled() && all_previous_moves_settled()) {
           power_transition_stage_ = PowerTransitionStage::DISABLE_RAIL;
           power_stage_command_sent_ = false;
           RCLCPP_INFO(
@@ -1319,6 +2113,12 @@ private:
   // ============================================================
   void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
   {
+    if (diagnostic_read_only_) {
+      requested_linear_x_mps_ = 0.0;
+      requested_angular_z_rps_ = 0.0;
+      wheel_motion_armed_ = false;
+      return;
+    }
     if (!std::isfinite(msg->linear.x) || !std::isfinite(msg->angular.z)) {
       RCLCPP_WARN(this->get_logger(), "Invalid /cmd_vel received.");
       return;
@@ -1340,7 +2140,7 @@ private:
 
     // Wheels must not receive a stored non-zero command while the robot is
     // ON_RAIL/WORKING/EXITING. A fresh /cmd_vel is required after OUT_RAIL.
-    if (!wheel_mode_requested() ||
+    if ((!allow_simultaneous_drive_ && !wheel_mode_requested()) ||
         power_transition_stage_ != PowerTransitionStage::NONE ||
         !wheel_axes_enabled_)
     {
@@ -1355,6 +2155,11 @@ private:
 
   void rail_cmd_speed_callback(const std_msgs::msg::Float32::SharedPtr msg)
   {
+    if (diagnostic_read_only_) {
+      requested_rail_speed_mps_ = 0.0;
+      rail_motion_armed_ = false;
+      return;
+    }
     const double speed_mps = static_cast<double>(msg->data);
 
     if (!std::isfinite(speed_mps)) {
@@ -1376,7 +2181,7 @@ private:
 
     // Rail Axis3 is physically disabled before ON_RAIL. Never retain an old
     // non-zero rail command that could execute after PowerEnable.
-    if (!rail_mode_requested() ||
+    if ((!allow_simultaneous_drive_ && !rail_mode_requested()) ||
         power_transition_stage_ != PowerTransitionStage::NONE ||
         !rail_axis_enabled_)
     {
@@ -1389,6 +2194,10 @@ private:
 
   void rail_state_callback(const std_msgs::msg::String::SharedPtr msg)
   {
+    if (diagnostic_read_only_) {
+      // Ignore /rail_state changes for power switching; no ADS writes.
+      return;
+    }
     const std::string new_state = msg->data;
 
     if (
@@ -1419,9 +2228,30 @@ private:
       previous_state.c_str(),
       rail_state_.c_str());
 
+    // In opted-in dual mode, rail state is informational. NEVER automatically
+    // disable Wheel or Rail power when /rail_state changes; revoke any stale
+    // motion targets and require fresh keyboard commands after changing state.
+    if (allow_simultaneous_drive_) {
+      clear_motion_requests();
+      wheel_motion_armed_ = false;
+      rail_motion_armed_ = false;
+      RCLCPP_WARN(this->get_logger(),
+        "[DUAL DRIVE] rail_state=%s: keeping both Power states unchanged; "
+        "motion targets cleared", rail_state_.c_str());
+      return;
+    }
     // Only a change between ground-drive mode and rail-drive mode requires
     // a servo power handover. WORKING <-> EXITING remains Rail mode.
     if (previous_rail_mode != new_rail_mode) {
+      if (!mock_mode_ && !motion_ready_) {
+        RCLCPP_ERROR(this->get_logger(),
+          "[POWER INTERLOCK] Mode change received while motion not ready; "
+          "power switching BLOCKED. Re-arm/diagnose PLC first.");
+        power_transition_stage_ = PowerTransitionStage::NONE;
+        rail_state_ = previous_state; // Never commit an unexecuted mode switch.
+        clear_motion_requests();
+        return;
+      }
       begin_power_transition_for_state();
     }
   }
@@ -1430,6 +2260,11 @@ private:
     const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
     std::shared_ptr<std_srvs::srv::SetBool::Response> response)
   {
+    if (diagnostic_read_only_) {
+      response->success = false;
+      response->message = "DIAGNOSTIC READ-ONLY: PLC Power/Reset writes are disabled.";
+      return;
+    }
     if (request->data && (fault_latched_ || safe_stop_latched_)) {
       response->success = false;
       response->message =
@@ -1438,15 +2273,12 @@ private:
       return;
     }
 
-    clear_motion_requests();
-    wheel_motion_armed_ = false;
-    rail_motion_armed_ = false;
-
     if (mock_mode_) {
       if (request->data) {
         wheel_axes_enabled_ = true;
-        rail_axis_enabled_ = false;
-        response->message = "Mock: wheel power ON, rail power OFF.";
+        if (!allow_simultaneous_drive_) rail_axis_enabled_ = false;
+        response->message = allow_simultaneous_drive_ ?
+          "Mock DUAL: wheel ON, rail unchanged." : "Mock: wheel power ON, rail power OFF.";
       } else {
         wheel_axes_enabled_ = false;
         response->message = "Mock: wheel power OFF.";
@@ -1461,24 +2293,111 @@ private:
       return;
     }
 
-    if (!wait_until_all_axes_stopped(stop_wait_timeout_sec_, "manual wheel power")) {
+    // Manual power services must NEVER send StopMove just to power-toggle.
+    // Deny until all axes are confirmed stopped by PLC feedback.
+    std::array<AxisStatus, 3> power_status{};
+    if (!read_axis_status(power_status) || has_any_fault(power_status)) {
       response->success = false;
       response->message =
-        "Wheel power request aborted: one or more axes did not physically stop.";
+        "Wheel power denied: AxisStatus missing/faulted; NO StopMove sent.";
       return;
     }
+
+
+    // Idempotent power command: skip duplicate PowerEnable/Disable calls.
+    const bool wheels_now =
+      power_status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed &&
+      power_status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool rail_now =
+      power_status[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed;
+
+    if (allow_simultaneous_drive_) {
+      // Do NOT switch the rail OFF just because a wheel was enabled.
+      if ((request->data && wheels_now) || (!request->data && !wheels_now)) {
+        response->success = true;
+        response->message = "DUAL: wheel power already matches; rail untouched.";
+        return;
+      }
+      if (!motion_ready_ ||
+          power_transition_stage_ != PowerTransitionStage::NONE ||
+          !all_axes_physically_stopped(power_status) ||
+          !all_previous_stops_settled() || !all_previous_moves_settled()) {
+        response->success = false;
+        response->message = "DUAL wheel power denied: requires motion ready, "
+          "all axes at confirmed standstill and PLC FB settled. Rail untouched.";
+        return;
+      }
+      clear_motion_requests();
+      wheel_motion_armed_ = false;
+      rail_motion_armed_ = false;
+      bool ok = true;
+      if (request->data) {
+        if (!power_status[static_cast<std::size_t>(left_wheel_axis_-1)].bControlLoopClosed)
+          ok = power_enable_axis(left_wheel_axis_);
+        if (ok && !power_status[static_cast<std::size_t>(right_wheel_axis_-1)].bControlLoopClosed)
+          ok = power_enable_axis(right_wheel_axis_);
+      } else {
+        if (power_status[static_cast<std::size_t>(left_wheel_axis_-1)].bControlLoopClosed)
+          ok = power_disable_axis(left_wheel_axis_);
+        if (ok && power_status[static_cast<std::size_t>(right_wheel_axis_-1)].bControlLoopClosed)
+          ok = power_disable_axis(right_wheel_axis_);
+      }
+      axis_snapshot_valid_ = false;
+      const bool match = ok && wait_for_expected_power_state(request->data, rail_now, 5.0);
+      response->success = match;
+      response->message = match ? "DUAL: wheels changed; rail power unchanged." :
+        "DUAL: wheel power failed/feedback mismatch; check PLC state.";
+      if (!match) {
+        motion_ready_ = false;
+        clear_motion_requests();
+      }
+      return;
+    }
+    if ((request->data && wheels_now && !rail_now) ||
+        (!request->data && !wheels_now)) {
+      response->success = true;
+      response->message = request->data ? "Wheels already enabled; no ADS command." :
+        "Wheels already disabled; no ADS command.";
+      return;
+    }
+
+    if (!all_axes_physically_stopped(power_status) ||
+        !all_previous_stops_settled() || !all_previous_moves_settled()) {
+      response->success = false;
+      response->message = "Wheel power denied: standstill/FB completion not confirmed. No STOP sent.";
+      return;
+    }
+
+    clear_motion_requests();
+    wheel_motion_armed_ = false;
+    rail_motion_armed_ = false;
 
     bool ok = true;
 
     if (request->data) {
-      // Never allow wheel and rail servo power at the same time.
-      if (rail_axis_enabled_) {
-        ok = power_disable_axis(rail_axis_) && ok;
+      // Never enable the wheels until the rail is confirmed DISABLED.
+      // Short-circuit on failed PowerDisable, not 'ok = call() && ok'.
+      if (rail_now) {
+        if (!power_disable_axis(rail_axis_)) {
+          response->success = false;
+          response->message = "Rail PowerDisable failed; wheels were NOT enabled.";
+          return;
+        }
+        axis_snapshot_valid_ = false;
+        std::array<AxisStatus, 3> after{};
+        if (!read_axis_status(after) ||
+            after[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed) {
+          response->success = false;
+          response->message = "Rail disable submitted, awaiting PLC OFF feedback. Repeat wheel ON after rail is OFF.";
+          return;
+        }
       }
-
-      ok = power_enable_axis(left_wheel_axis_) && ok;
-      ok = power_enable_axis(right_wheel_axis_) && ok;
-
+      if (!power_status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed) {
+        ok = power_enable_axis(left_wheel_axis_);
+      }
+      if (ok && !power_status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed) {
+        ok = power_enable_axis(right_wheel_axis_);
+      }
       if (ok && wait_for_expected_power_state(true, false, 5.0)) {
         wheel_axes_enabled_ = true;
         rail_axis_enabled_ = false;
@@ -1509,6 +2428,11 @@ private:
     const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
     std::shared_ptr<std_srvs::srv::SetBool::Response> response)
   {
+    if (diagnostic_read_only_) {
+      response->success = false;
+      response->message = "DIAGNOSTIC READ-ONLY: PLC Power/Reset writes are disabled.";
+      return;
+    }
     if (request->data && (fault_latched_ || safe_stop_latched_)) {
       response->success = false;
       response->message =
@@ -1517,15 +2441,12 @@ private:
       return;
     }
 
-    clear_motion_requests();
-    wheel_motion_armed_ = false;
-    rail_motion_armed_ = false;
-
     if (mock_mode_) {
       if (request->data) {
-        wheel_axes_enabled_ = false;
+        if (!allow_simultaneous_drive_) wheel_axes_enabled_ = false;
         rail_axis_enabled_ = true;
-        response->message = "Mock: rail power ON, wheel power OFF.";
+        response->message = allow_simultaneous_drive_ ?
+          "Mock DUAL: rail ON, wheels unchanged." : "Mock: rail power ON, wheel power OFF.";
       } else {
         rail_axis_enabled_ = false;
         response->message = "Mock: rail power OFF.";
@@ -1540,24 +2461,100 @@ private:
       return;
     }
 
-    if (!wait_until_all_axes_stopped(stop_wait_timeout_sec_, "manual rail power")) {
+    std::array<AxisStatus, 3> power_status{};
+    if (!read_axis_status(power_status) || has_any_fault(power_status)) {
       response->success = false;
       response->message =
-        "Rail power request aborted: one or more axes did not physically stop.";
+        "Rail power denied: AxisStatus missing/faulted; NO StopMove sent.";
       return;
     }
+
+
+    // Idempotent power command: skip duplicate PowerEnable/Disable calls.
+    const bool wheels_now =
+      power_status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed &&
+      power_status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool rail_now =
+      power_status[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed;
+
+    if (allow_simultaneous_drive_) {
+      // Preserve the existing Wheel power. Power changes MUST be made from
+      // proven standstill (not just zero speed) with PLC FB status settled.
+      if ((request->data && rail_now) || (!request->data && !rail_now)) {
+        response->success = true;
+        response->message = "DUAL: rail power already matches; wheels untouched.";
+        return;
+      }
+      if (!motion_ready_ ||
+          power_transition_stage_ != PowerTransitionStage::NONE ||
+          !all_axes_physically_stopped(power_status) ||
+          !all_previous_stops_settled() || !all_previous_moves_settled()) {
+        response->success = false;
+        response->message = "DUAL rail power denied: requires motion ready, "
+          "all axes at confirmed standstill and PLC FB settled. Wheels untouched.";
+        return;
+      }
+      clear_motion_requests();
+      wheel_motion_armed_ = false;
+      rail_motion_armed_ = false;
+      const bool ok = request->data ? power_enable_axis(rail_axis_) :
+        power_disable_axis(rail_axis_);
+      axis_snapshot_valid_ = false;
+      const bool match = ok && wait_for_expected_power_state(wheels_now, request->data, 5.0);
+      response->success = match;
+      response->message = match ? "DUAL: rail power changed; wheels unchanged." :
+        "DUAL: rail power failed/feedback mismatch; check PLC state.";
+      if (!match) {
+        motion_ready_ = false;
+        clear_motion_requests();
+      }
+      return;
+    }
+    if ((request->data && rail_now && !wheels_now) ||
+        (!request->data && !rail_now)) {
+      response->success = true;
+      response->message = request->data ? "Rail already enabled; no ADS command." :
+        "Rail already disabled; no ADS command.";
+      return;
+    }
+
+    if (!all_axes_physically_stopped(power_status) ||
+        !all_previous_stops_settled() || !all_previous_moves_settled()) {
+      response->success = false;
+      response->message = "Rail power denied: standstill/FB completion not confirmed. No STOP sent.";
+      return;
+    }
+
+    clear_motion_requests();
+    wheel_motion_armed_ = false;
+    rail_motion_armed_ = false;
 
     bool ok = true;
 
     if (request->data) {
-      // Never allow wheel and rail servo power at the same time.
-      if (wheel_axes_enabled_) {
-        ok = power_disable_axis(left_wheel_axis_) && ok;
-        ok = power_disable_axis(right_wheel_axis_) && ok;
+      // Wheel -> rail: disable both active wheels BEFORE issuing rail ON.
+      // Never issue rail PowerEnable if either wheel is still controller-ready.
+      if (power_status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed) {
+        ok = power_disable_axis(left_wheel_axis_);
       }
-
-      ok = power_enable_axis(rail_axis_) && ok;
-
+      if (ok && power_status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed) {
+        ok = power_disable_axis(right_wheel_axis_);
+      }
+      if (!ok) {
+        response->success = false;
+        response->message = "Wheel PowerDisable failed. Rail was NOT enabled.";
+        return;
+      }
+      axis_snapshot_valid_ = false;
+      std::array<AxisStatus, 3> after{};
+      if (!read_axis_status(after) ||
+          after[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed ||
+          after[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed) {
+        response->success = false;
+        response->message = "Wheel disable submitted, awaiting BOTH wheel OFF feedback. Repeat rail ON when OFF.";
+        return;
+      }
+      if (!rail_now) ok = power_enable_axis(rail_axis_);
       if (ok && wait_for_expected_power_state(false, true, 5.0)) {
         wheel_axes_enabled_ = false;
         rail_axis_enabled_ = true;
@@ -1583,101 +2580,282 @@ private:
     }
   }
 
+  // ------------------------------------------------------------------
+  // EXPLICIT operator recovery from a stale NC MoveVelocity job, used when
+  // the robot is confirmed stationary, but HasJob=1 and NotMoving=0.
+  // Does NOT bypass bNotMoving, release a motor Power interlock, or re-arm.
+  // No automatic STOP command is sent at boot.  An external physical E-stop
+  // is necessary because software alone is not a safety function.
+  // ------------------------------------------------------------------
+  void recover_stale_jobs_callback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+  {
+    if (diagnostic_read_only_ || mock_mode_ || !ads_connected_ ||
+        stale_recovery_pending_ || reset_rearm_pending_ ||
+        power_transition_stage_ != PowerTransitionStage::NONE) {
+      response->success = false;
+      response->message = "Recovery denied: read-only/mock/offline, already pending, or power transition active.";
+      return;
+    }
+    std::array<AxisStatus, 3> axes{};
+    if (!read_axis_status(axes) || has_any_fault(axes)) {
+      response->success = false;
+      response->message = "Recovery denied: missing axis status or a genuine PLC error (use normal fault procedure).";
+      return;
+    }
+    uint32_t stale_mask = 0;
+    for (int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+      const auto & st = axes[static_cast<std::size_t>(axis-1)];
+      const double mps = std::fabs(st.lActVelocity / velocity_scale_);
+      if (!std::isfinite(mps) || mps > 0.001) {
+        response->success = false;
+        response->message = "Recovery denied: an axis is not confirmed near zero velocity.";
+        return;
+      }
+      if (st.bHasJob && !st.bNotMoving) {
+        FunctionStatus stop{};
+        if (!read_stop_status(axis, stop) || stop.bError || stop.bBusy) {
+          response->success = false;
+          response->message = "Recovery denied: stale axis STOP FB busy/error/unreadable. PLC service required.";
+          return;
+        }
+        stale_mask |= (uint32_t{1} << (axis-1));
+      } else if (st.bHasJob || !st.bNotMoving || st.bMovingFw || st.bMovingBw) {
+        response->success = false;
+        response->message = "Recovery denied: inconsistent NC state outside stale-job pattern.";
+        return;
+      }
+    }
+    if (!stale_mask) {
+      response->success = false;
+      response->message = "No stale motion job. Use normal /agv/reset_faults or check power/rail mode.";
+      return;
+    }
+
+    // Leave motor Power unchanged and inhibit all motion throughout recovery.
+    clear_motion_requests();
+    motion_ready_ = false;
+    safe_stop_latched_ = true;
+    safe_stop_active_ = false;
+    if (safe_stop_reason_.empty()) safe_stop_reason_ = "operator stale-job STOP recovery";
+    stale_recovery_pending_ = true;
+    stale_recovery_stops_sent_ = false;
+    stale_recovery_mask_ = stale_mask;
+    stale_recovery_started_ = std::chrono::steady_clock::now();
+    RCLCPP_WARN(this->get_logger(),
+      "[STALE RECOVERY REQUEST] axes mask=0x%X. Zero velocity must persist for 1.0s. "
+      "Then issue exactly ONE STOP per stale axis; NO Power/Move/automatic re-arm.",
+      static_cast<unsigned int>(stale_mask));
+    response->success = true;
+    response->message = "Stale-job recovery armed. No motor motion allowed. Watch [STALE RECOVERY] logs.";
+  }
+
+  void process_stale_recovery(const std::array<AxisStatus, 3> & axes)
+  {
+    if (!stale_recovery_pending_) return;
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsed = std::chrono::duration<double>(now - stale_recovery_started_).count();
+    auto abort = [&](const char *why) {
+      stale_recovery_pending_ = false;
+      RCLCPP_ERROR(this->get_logger(),
+        "[STALE RECOVERY FAILED] %s; motion remains latched; no automatic restart.", why);
+    };
+    if (elapsed >= 8.0) {
+      abort("PLC did not clear stale job/Stop FB within 8s");
+      return;
+    }
+    if (has_any_fault(axes) || power_transition_stage_ != PowerTransitionStage::NONE) {
+      abort("PLC fault or power transition appeared");
+      return;
+    }
+    for (int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+      const auto & st = axes[static_cast<std::size_t>(axis - 1)];
+      const double speed = std::fabs(st.lActVelocity / velocity_scale_);
+      // Conservative: no 'speed near zero means NotMoving' shortcut.
+      if (!std::isfinite(speed) || speed > 0.001) {
+        abort("axis velocity changed; no additional STOP/Reset/Power commands");
+        return;
+      }
+      if (!stale_recovery_stops_sent_ &&
+          (stale_recovery_mask_ & (uint32_t{1} << (axis-1)))) {
+        FunctionStatus stop{};
+        if (!read_stop_status(axis, stop) || stop.bError || stop.bBusy) {
+          abort("STOP FB busy/error/unreadable before one-shot STOP");
+          return;
+        }
+      }
+    }
+    if (!stale_recovery_stops_sent_) {
+      if (elapsed < 1.0) return; // continuous stationary validation
+      stale_recovery_stops_sent_ = true; // set gate BEFORE ADS writes
+      for (int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+        if (!(stale_recovery_mask_ & (uint32_t{1} << (axis-1)))) continue;
+        int32_t result = UNKNOWN_ERR_TcMCFUN;
+        RCLCPP_WARN(this->get_logger(),
+          "[STALE RECOVERY STOP] Sending one PLC STOP (NOT a velocity command) to Axis%d", axis);
+        const double ramp = axis == rail_axis_ ? rail_ramp_ms_ : wheel_ramp_ms_;
+        if (!plc_fb_reader_.send_stop_once(axis, ramp, jerk_percent_, result)) {
+          RCLCPP_ERROR(this->get_logger(),
+            "[STALE RECOVERY STOP FAILED] Axis%d ADS/PLC result=0x%X", axis,
+            static_cast<unsigned>(result));
+          abort("PLC STOP method rejected. No retries");
+          return;
+        }
+      }
+      RCLCPP_WARN(this->get_logger(),
+        "[STALE RECOVERY STOP SENT] Observing PLC NC/FB; motor Power unchanged.");
+      return;
+    }
+    bool all_idle = true;
+    for (int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+      const auto & st = axes[static_cast<std::size_t>(axis - 1)];
+      if (st.bHasJob || !st.bNotMoving || st.bMovingFw || st.bMovingBw) all_idle = false;
+      if (st.bControlLoopClosed) {
+        FunctionStatus stop{};
+        if (!read_stop_status(axis, stop) || stop.bError || (stop.bBusy && !stop.bDone))
+          all_idle = false;
+      }
+    }
+    if (all_idle) {
+      stale_recovery_pending_ = false;
+      RCLCPP_WARN(this->get_logger(),
+        "[STALE RECOVERY COMPLETE] NC jobs cleared; NO auto re-arm or Power switching. "
+        "If MC_Stop remains Busy=1 Done=1, /agv/reset_faults can unlock it once. "
+        "Confirm rail position/power mode, then request /agv/reset_faults. "
+        "If power mode mismatches, restart ROS bringup (IPC reboot NOT required)." );
+    }
+  }
+
+  // /agv/reset_faults is a NON-BLOCKING request.  The service ACK means
+  // Reset has been submitted, NOT that the PLC has re-armed the motor.
+  // The 20Hz timer will confirm every axis is fault-free and safely stopped.
   void reset_faults_callback(
     const std::shared_ptr<std_srvs::srv::Trigger::Request>,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
+    if (diagnostic_read_only_) {
+      response->success = false;
+      response->message = "DIAGNOSTIC READ-ONLY: PLC Power/Reset writes are disabled.";
+      return;
+    }
     if (mock_mode_) {
-      motion_ready_ = true;
       fault_latched_ = false;
       safe_stop_latched_ = false;
       safe_stop_active_ = false;
-      safe_stop_reason_.clear();
-      fault_reset_attempted_.fill(false);
-      wheel_motion_armed_ = false;
-      rail_motion_armed_ = false;
+      motion_ready_ = true;
+      reset_rearm_pending_ = false;
       response->success = true;
-      response->message = "Mock mode: faults cleared.";
+      response->message = "Mock mode: reset/re-arm complete.";
       return;
     }
-
     if (!ads_connected_) {
       response->success = false;
-      response->message = "ADS is not connected.";
+      response->message = "ADS disconnected. Reset rejected.";
       return;
     }
-
-    // Vendor-specific fault recovery: do NOT send StopMove before Reset or
-    // after Reset. Keep ROS motion inhibited throughout the whole sequence.
+    if (stale_recovery_pending_) {
+      response->success = false;
+      response->message = "Operator stale-job STOP recovery still pending; watch logs.";
+      return;
+    }
+    if (reset_rearm_pending_) {
+      response->success = true;
+      response->message = "Reset already submitted; awaiting PLC standstill/FB release. Check /agv_status.";
+      return;
+    }
     clear_motion_requests();
     motion_ready_ = false;
     std::array<AxisStatus, 3> status{};
     if (!read_axis_status(status)) {
       response->success = false;
-      response->message = "AxisStatus unavailable; Reset/re-arm refused.";
+      response->message = "No fresh AxisStatus. No Reset sent.";
       return;
     }
-
-    if (has_any_fault(status)) {
-      // Latch fault before issuing any ADS command, even if the ROS timer has
-      // not yet processed the notification. This activates the central STOP guard.
-      fault_latched_ = true;
-      if (!safe_stop_latched_) {
-        enter_safe_stop("axis fault detected during reset request");
+    // Latch BEFORE issuing Reset so neither the normal STOP handler nor
+    // the watchdog can transmit StopMove on a faulted axis.
+    fault_latched_ = fault_latched_ || has_any_fault(status);
+    safe_stop_latched_ = true;
+    safe_stop_active_ = false;
+    if (safe_stop_reason_.empty()) safe_stop_reason_ = "Reset/re-arm in progress";
+    bool ok = true;
+    // MC_Stop can keep a fault-free axis locked after Done=1.  Beckhoff
+    // documents MC_Reset as a possible lock release.  Do NOT Reset a
+    // fault-free axis while HasJob=1, or while any axis is still moving.
+    const bool all_still = all_axes_physically_stopped(status);
+    for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
+      const auto & st = status[static_cast<std::size_t>(axis - 1)];
+      const bool real_fault = st.bError;
+      bool completed_stop_lock = false;
+      if (!real_fault && all_still && !st.bHasJob && st.bControlLoopClosed) {
+        FunctionStatus fb{};
+        completed_stop_lock = read_stop_status(axis, fb) &&
+          fb.bBusy && fb.bDone && !fb.bError;
       }
-      safe_stop_active_ = false;
-
-      bool reset_ok = true;
-      for (const int axis : {left_wheel_axis_, right_wheel_axis_, rail_axis_}) {
-        const std::size_t idx = static_cast<std::size_t>(axis - 1);
-        if (!status[idx].bError) {
-          continue;
-        }
-        RCLCPP_WARN(this->get_logger(),
-          "[FAULT RESET TX] Axis%d Reset() without StopMove", axis);
-        const int32_t result = Reset(static_cast<uint32_t>(axis));
-        fault_reset_attempted_[static_cast<std::size_t>(axis)] = true;
-        if (result != NO_ERR_TcMCFUN) {
-          reset_ok = false;
-          RCLCPP_ERROR(this->get_logger(),
-            "[FAULT RESET] Reset(Axis%d) failed: 0x%X", axis,
-            static_cast<unsigned int>(result));
-        }
-      }
-      if (!reset_ok) {
-        response->success = false;
-        response->message =
-          "Reset() failed; no StopMove was transmitted. Check PLC error/Busy.";
-        return;
-      }
-      if (!wait_until_faults_clear(3.0)) {
-        response->success = false;
-        response->message =
-          "Reset sent without StopMove, but error did not clear in 3 seconds. "
-          "Motion remains latched.";
-        return;
+      if (!real_fault && !completed_stop_lock) continue;
+      RCLCPP_WARN(this->get_logger(),
+        "[FAULT RESET TX] Axis%d Reset once (reason=%s; no new MoveVelocity)",
+        axis, real_fault ? "real axis fault" : "completed MC_Stop lock");
+      int32_t result = UNKNOWN_ERR_TcMCFUN;
+      const bool sent = plc_fb_reader_.send_reset_once(axis, result);
+      fault_reset_attempted_[static_cast<std::size_t>(axis)] = true;
+      if (!sent) {
+        RCLCPP_ERROR(this->get_logger(),
+          "[FAULT RESET] Axis%d PLC method rejected: 0x%X", axis,
+          static_cast<unsigned int>(result));
+        ok = false;
       }
     }
-
-    // Reset() clearing bError is NOT equivalent to the axis being stopped.
-    // The robot must physically stop under its own drive/PLC fault reaction.
-    if (!read_axis_status(status) || has_any_fault(status) ||
-        !all_axes_physically_stopped(status)) {
+    if (!ok) {
       response->success = false;
-      response->message =
-        "Axis error may be cleared, but standstill is NOT confirmed. "
-        "No StopMove/PowerDisable sent; manual inspection required.";
+      response->message = "PLC Reset rejected. Motion remains latched. Check drive diagnostics.";
       return;
     }
+    reset_rearm_pending_ = true;
+    reset_rearm_started_ = std::chrono::steady_clock::now();
+    response->success = true;
+    response->message = "Reset submitted; re-arm will complete asynchronously only after confirmed standstill. Check /agv_status.";
+  }
 
-    if (!configure_power_after_fault_reset_without_stop(5.0)) {
-      response->success = false;
-      response->message =
-        "Re-arm/power handover failed. No StopMove sent. "
-        "Check PLC state and axis feedback.";
+  // Runs on the SAME executor thread as motion control; no shared mutable
+  // state races and no blocking sleep_for() in a ROS service callback.
+  void process_pending_reset(const std::array<AxisStatus, 3> & status)
+  {
+    if (!reset_rearm_pending_) return;
+    const double elapsed = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - reset_rearm_started_).count();
+    if (elapsed >= 5.0) {
+      reset_rearm_pending_ = false;
+      RCLCPP_ERROR(this->get_logger(),
+        "[FAULT RESET TIMEOUT] PLC not ready/standstill within 5s. "
+        "Motion remains locked; inspect PLC state and request reset again after repair.");
       return;
     }
-
+    if (has_any_fault(status) || !all_axes_physically_stopped(status)) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[FAULT RESET WAIT] axis fault or bNotMoving/velocity mismatch; NO motion");
+      return;
+    }
+    const bool left_on = status[static_cast<std::size_t>(left_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool right_on = status[static_cast<std::size_t>(right_wheel_axis_ - 1)].bControlLoopClosed;
+    const bool rail_on = status[static_cast<std::size_t>(rail_axis_ - 1)].bControlLoopClosed;
+    // Dual mode never forces a rail-vs-wheel enable switch during reset.
+    // Restore only the current, internally consistent power configuration.
+    const bool wheels_wanted = allow_simultaneous_drive_ ? left_on : wheel_mode_requested();
+    const bool rail_wanted = allow_simultaneous_drive_ ? rail_on : rail_mode_requested();
+    if ((allow_simultaneous_drive_ && (left_on != right_on || (!left_on && !rail_on))) ||
+        left_on != wheels_wanted || right_on != wheels_wanted ||
+        rail_on != rail_wanted) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[FAULT RESET WAIT] Power mode mismatch; NO implicit Power cycling");
+      return;
+    }
+    if (!plc_idle_for_existing_power(status) || !all_previous_stops_settled()) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[FAULT RESET WAIT] PLC Stop/Move FB not quiescent; NO motion");
+      return;
+    }
+    reset_rearm_pending_ = false;
     power_transition_stage_ = PowerTransitionStage::NONE;
     power_stage_command_sent_ = false;
     fault_latched_ = false;
@@ -1687,17 +2865,21 @@ private:
     safe_stop_reason_.clear();
     fault_reset_attempted_.fill(false);
     stop_attempt_initialized_.fill(false);
+    last_stop_tx_initialized_.fill(false);
+    stop_idle_confirm_initialized_.fill(false);
     move_attempt_initialized_.fill(false);
+    last_accepted_move_initialized_.fill(false);
+    move_feedback_stable_initialized_.fill(false);
     wheel_motion_armed_ = false;
     rail_motion_armed_ = false;
+    wheel_axes_enabled_ = left_on && right_on;
+    rail_axis_enabled_ = rail_on;
     motion_ready_ = true;
-
     last_cmd_vel_time_ = this->now();
     last_rail_cmd_time_ = this->now();
-
-    response->success = true;
-    response->message =
-      "Reset/re-arm complete (no StopMove). New fresh velocity command required.";
+    RCLCPP_INFO(this->get_logger(),
+      "[FAULT RESET COMPLETE] PLC status/standstill confirmed. "
+      "Fresh velocity input required before motion.");
   }
 
   // ============================================================
@@ -1828,6 +3010,24 @@ private:
   void timer_callback()
   {
     const auto now = this->now();
+    if (diagnostic_read_only_ && !mock_mode_) {
+      // Read-only monitoring is deliberately slower than the motion timer.
+      // No PLC power/move/stop/reset methods are sent by this path.
+      const auto steady_now = std::chrono::steady_clock::now();
+      if (!last_diagnostic_poll_initialized_ ||
+          std::chrono::duration<double>(steady_now - last_diagnostic_poll_tp_).count()
+            >= diagnostic_ads_poll_period_sec_) {
+        last_diagnostic_poll_initialized_ = true;
+        last_diagnostic_poll_tp_ = steady_now;
+        std::array<AxisStatus, 3> snapshot{};
+        if (ads_connected_ && read_axis_status(snapshot)) {
+          log_axis_monitor(snapshot);
+        }
+      }
+      publish_environment_sensor_if_due(now);
+      if ((status_counter_++ % 20) == 0) publish_status();
+      return;
+    }
 
     if (mock_mode_) {
       publish_mock_feedback();
@@ -1835,12 +3035,17 @@ private:
       std::array<AxisStatus, 3> status{};
       if (read_axis_status(status)) {
         process_axis_status(status);
+        if (stale_recovery_pending_) process_stale_recovery(status);
+        if (reset_rearm_pending_) process_pending_reset(status);
         if (safe_stop_latched_) {
           process_safe_stop(status);
         }
-        if (!fault_latched_ && !safe_stop_latched_) {
+        if (motion_ready_ && !fault_latched_ && !safe_stop_latched_) {
           process_power_transition(status);
         }
+      } else if (motion_ready_ && !safe_stop_latched_) {
+        enter_safe_stop("ADS axis feedback stale or missing; PLC safety watchdog required");
+        safe_stop_active_ = false;  // no StopMove without fresh feedback
       }
     }
 
@@ -1907,21 +3112,29 @@ private:
     if (mock_mode_) {
       if (power_transition_active) {
         apply_mock_commands(0.0, 0.0, 0.0);
+      } else if (allow_simultaneous_drive_) {
+        apply_mock_commands(wheel_axes_enabled_ ? target_linear : 0.0,
+          wheel_axes_enabled_ ? target_angular : 0.0,
+          rail_axis_enabled_ ? target_rail : 0.0);
       } else if (rail_mode_requested()) {
         apply_mock_commands(0.0, 0.0, target_rail);
       } else {
         apply_mock_commands(target_linear, target_angular, 0.0);
       }
     } else if (ads_connected_ && motion_ready_ && !fault_latched_ && !safe_stop_latched_) {
-      if (!power_transition_active && wheel_mode_requested() && wheel_axes_enabled_) {
+      if (!power_transition_active &&
+          (allow_simultaneous_drive_ || wheel_mode_requested()) && wheel_axes_enabled_) {
         apply_wheel_command(target_linear, target_angular);
       } else {
         applied_left_mps_ = 0.0;
         applied_right_mps_ = 0.0;
       }
 
-      if (!power_transition_active && rail_mode_requested() && rail_axis_enabled_) {
-        apply_rail_command(target_rail);
+      if (!power_transition_active &&
+          (allow_simultaneous_drive_ || rail_mode_requested()) && rail_axis_enabled_) {
+        const double permitted_rail = (allow_simultaneous_drive_ && wheel_axes_enabled_) ?
+          std::clamp(target_rail, -dual_rail_max_mps_, dual_rail_max_mps_) : target_rail;
+        apply_rail_command(permitted_rail);
       } else {
         applied_rail_mps_ = 0.0;
       }
@@ -1945,14 +3158,47 @@ private:
   // ============================================================
   bool read_axis_status(std::array<AxisStatus, 3> & status)
   {
-    // V6: Notification only.  No ReadAxisStatus() ADS polling is performed.
-    // TcMCApi::AxisStatus_NotifyCallback() asynchronously memcpy()s the
-    // PLC starAxisStatus array into axis_status_notification_cache_.
-    if (!ads_connected_ || !axis_status_notification_registered_) {
+    if (!ads_connected_) return false;
+    const auto now = std::chrono::steady_clock::now();
+    // Prevent repeated synchronous ADS round trips inside one 20Hz cycle.
+    // Unlike the vendor Notification callback, this cache is only accessed
+    // from the ROS executor thread, avoiding unsynchronized memcpy reads.
+    if (axis_snapshot_valid_ &&
+        std::chrono::duration<double, std::milli>(
+          now - axis_snapshot_time_).count() < 35.0) {
+      status = axis_snapshot_;
+      return true;
+    }
+    std::array<AxisStatus, 3> snapshot{};
+    const auto ads_read_started = std::chrono::steady_clock::now();
+    const int32_t rc = ReadAxisStatus(snapshot.data(), 3);
+    const double ads_read_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - ads_read_started).count();
+    if (ads_read_ms > ads_slow_read_warn_ms_) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "[ADS SLOW READ] ReadAxisStatus took %.1fms (warning > %.1fms). "
+        "Synchronous ADS blocks the executor; diagnostic mode reduces polling "
+        "but cannot enforce an ADS request timeout.",
+        ads_read_ms, ads_slow_read_warn_ms_);
+    }
+    if (rc != NO_ERR_TcMCFUN) {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "[ADS READ] ReadAxisStatus failed: 0x%X. No motion authorization.",
+        static_cast<unsigned int>(rc));
+      axis_snapshot_valid_ = false;
       return false;
     }
-
-    status = axis_status_notification_cache_;
+    for (const auto & s : snapshot) {
+      if (!std::isfinite(s.lActVelocity) || !std::isfinite(s.lActPosition)) {
+        axis_snapshot_valid_ = false;
+        return false;
+      }
+    }
+    axis_snapshot_ = snapshot;
+    axis_snapshot_time_ = std::chrono::steady_clock::now();
+    axis_snapshot_valid_ = true;
+    status = snapshot;
     return true;
   }
 
@@ -2002,7 +3248,7 @@ private:
       "[AXIS MONITOR] "
       "CMD L=%+.3f R=%+.3f m/s | "
       "ACT L=%+.3f R=%+.3f m/s | "
-      "READY L=%d R=%d | NM L=%d R=%d | "
+      "READY L=%d R=%d | NM L=%d R=%d | JOB L=%d R=%d | "
       "ERR L=%d(0x%X) R=%d(0x%X) | "
       "RAIL cmd=%+.3f act=%+.3f ready=%d nm=%d err=%d(0x%X)",
       left_cmd_mps,
@@ -2013,6 +3259,8 @@ private:
       right.bControlLoopClosed ? 1 : 0,
       left.bNotMoving ? 1 : 0,
       right.bNotMoving ? 1 : 0,
+      left.bHasJob ? 1 : 0,
+      right.bHasJob ? 1 : 0,
       left.bError ? 1 : 0,
       static_cast<unsigned int>(left.nErrorCode),
       right.bError ? 1 : 0,
@@ -2029,7 +3277,14 @@ private:
     constexpr double kCommandCheckMinMps = 0.02;
     constexpr double kBadTrackingRatio = 0.50;
 
-    if (std::fabs(left_cmd_mps) >= kCommandCheckMinMps) {
+    if (motion_ready_ && wheel_axes_enabled_ &&
+        !safe_stop_latched_ && !fault_latched_ &&
+        last_accepted_move_initialized_[static_cast<std::size_t>(left_wheel_axis_)] &&
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+          last_accepted_move_tp_[static_cast<std::size_t>(left_wheel_axis_)]).count() >
+          (wheel_ramp_ms_ / 1000.0 + 0.25) &&
+        std::fabs(applied_left_mps_) >= kCommandCheckMinMps &&
+        std::fabs(left_cmd_mps) >= kCommandCheckMinMps) {
       const double ratio =
         std::fabs(left_actual_mps) / std::fabs(left_cmd_mps);
       if (ratio < kBadTrackingRatio) {
@@ -2043,7 +3298,14 @@ private:
       }
     }
 
-    if (std::fabs(right_cmd_mps) >= kCommandCheckMinMps) {
+    if (motion_ready_ && wheel_axes_enabled_ &&
+        !safe_stop_latched_ && !fault_latched_ &&
+        last_accepted_move_initialized_[static_cast<std::size_t>(right_wheel_axis_)] &&
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+          last_accepted_move_tp_[static_cast<std::size_t>(right_wheel_axis_)]).count() >
+          (wheel_ramp_ms_ / 1000.0 + 0.25) &&
+        std::fabs(applied_right_mps_) >= kCommandCheckMinMps &&
+        std::fabs(right_cmd_mps) >= kCommandCheckMinMps) {
       const double ratio =
         std::fabs(right_actual_mps) / std::fabs(right_cmd_mps);
       if (ratio < kBadTrackingRatio) {
@@ -2102,6 +3364,7 @@ private:
           fault_reset_attempted_[idx] = true;
           RCLCPP_WARN(this->get_logger(),
             "[AUTO FAULT RESET TX] Axis%d Reset() once; no StopMove", axis);
+          if (diagnostic_read_only_) return;
           const int32_t result = Reset(static_cast<uint32_t>(axis));
           if (result != NO_ERR_TcMCFUN) {
             RCLCPP_ERROR(this->get_logger(),
@@ -2286,10 +3549,19 @@ private:
       return;
     }
 
-    const double left_target_mps =
+    double left_target_mps =
       linear_mps - angular_rps * wheel_separation_m_ / 2.0;
-    const double right_target_mps =
+    double right_target_mps =
       linear_mps + angular_rps * wheel_separation_m_ / 2.0;
+
+    // Clamp ACTUAL wheel axis setpoints (not only Twist.linear), since a
+    // steering command can otherwise exceed the dual-drive speed cap.
+    if (allow_simultaneous_drive_ && rail_axis_enabled_) {
+      left_target_mps = std::clamp(left_target_mps,
+        -dual_wheel_axis_max_mps_, dual_wheel_axis_max_mps_);
+      right_target_mps = std::clamp(right_target_mps,
+        -dual_wheel_axis_max_mps_, dual_wheel_axis_max_mps_);
+    }
 
     apply_single_axis_velocity(
       left_wheel_axis_, left_target_mps, left_wheel_sign_,
@@ -2341,6 +3613,8 @@ private:
     const bool rail_physically_stopped =
       rail_b_not_moving &&
       std::fabs(actual_rail_mps_) <= kStoppedThresholdMps;
+    const bool rail_velocity_is_zero =
+      std::fabs(actual_rail_mps_) <= stop_suppress_velocity_mps_;
 
     const auto now_tp = std::chrono::steady_clock::now();
 
@@ -2368,71 +3642,32 @@ private:
           move_ramp_complete = elapsed_ms >= rail_ramp_ms_;
         }
 
-        // If the previous StopMove attempt returned BUSY, wait at least one
-        // rail ramp interval before trying again.  This avoids repeatedly
-        // colliding with an active MC command.
-        if (rail_stop_retry_wait_active_) {
-          const double retry_wait_ms =
-            std::chrono::duration<double, std::milli>(
-              now_tp - rail_stop_retry_wait_start_tp_).count();
-
-          if (retry_wait_ms < rail_ramp_ms_) {
+        // No retry loop after BUSY; never StopMove a stationary rail.
+        if (rail_physically_stopped) {
+          rail_stop_tx_sent_ = true;  // STOP already achieved, wait for state B.
+        } else if (rail_velocity_is_zero) {
+          return;  // bNotMoving may lag; never send STOP at zero speed.
+        } else {
+          // STOP is a cancellation command, not a subsequent velocity ramp.
+          // Never wait on MoveVelocity Busy/Done to accept a necessary STOP.
+          (void)move_ramp_complete; // elapsed ramp is diagnostic only.
+          const auto stop_result = request_axis_stop(
+            rail_axis_, rail_ramp_ms_, "RAIL STOP sequence");
+          if (stop_result == StopRequestResult::ACCEPTED ||
+              stop_result == StopRequestResult::ALREADY_REQUESTED) {
+            rail_stop_tx_sent_ = true;
+            rail_stop_tx_tp_ = now_tp;
+          } else if (stop_result == StopRequestResult::BUSY ||
+                     stop_result == StopRequestResult::FAILED) {
+            // A failed STOP has already caused a no-retry motion latch.
+            return;
+          } else {
             return;
           }
-
-          rail_stop_retry_wait_active_ = false;
         }
-
-        if (!move_ramp_complete) {
-          return;
-        }
-
-        RCLCPP_INFO(
-          this->get_logger(),
-          "[RAIL STOP TX] Axis%d ramp=%.0f ms pending_target=%+.3f m/s",
-          rail_axis_,
-          rail_ramp_ms_,
-          rail_pending_target_mps_);
-
-        // IMPORTANT: g/STOP only calls StopMove for Axis3.
-        const int32_t result =
-          StopMove(
-            static_cast<uint32_t>(rail_axis_),
-            rail_ramp_ms_,
-            jerk_percent_);
-
-        if (result == NO_ERR_TcMCFUN) {
-          rail_stop_tx_sent_ = true;
-          rail_stop_tx_tp_ = now_tp;
-
-          RCLCPP_INFO(
-            this->get_logger(),
-            "[RAIL STOP] Axis%d StopMove accepted; waiting for "
-            "AxisStatus Notification bNotMoving",
-            rail_axis_);
-
-          return;
-        }
-
-        if (is_ads_device_busy(result)) {
-          rail_stop_retry_wait_active_ = true;
-          rail_stop_retry_wait_start_tp_ = now_tp;
-
-          RCLCPP_WARN(
-            this->get_logger(),
-            "[RAIL STOP] Axis%d StopMove BUSY (0x98110708). "
-            "Will not spam StopMove; retry after rail ramp %.0f ms.",
-            rail_axis_,
-            rail_ramp_ms_);
-          return;
-        }
-
-        RCLCPP_ERROR(
-          this->get_logger(),
-          "[RAIL STOP] Axis%d StopMove failed: 0x%X",
-          rail_axis_,
-          static_cast<unsigned int>(result));
-        return;
+        // Fall through to B only when the PLC has confirmed standstill;
+        // otherwise the next timer cycle observes the STOP status.
+        if (!rail_physically_stopped) {return;}
       }
 
       // ------------------------------------------------------------
@@ -2502,14 +3737,14 @@ private:
     if (std::fabs(rail_target_mps) <= kZeroMps) {
       rail_pending_target_mps_ = 0.0;
 
-      if (
-        std::fabs(applied_rail_mps_) <= kZeroMps &&
-        rail_physically_stopped)
-      {
+      if (rail_physically_stopped) {
         applied_rail_mps_ = 0.0;
         return;
       }
 
+      // Stop from non-zero actual velocity only; zero feedback (even if
+      // bNotMoving is late) is NOT a reason to send another StopMove.
+      if (rail_velocity_is_zero) {return;}
       rail_stop_sequence_active_ = true;
       rail_waiting_for_stop_ = true;
       rail_stop_tx_sent_ = false;
@@ -2541,6 +3776,12 @@ private:
       return;
     }
 
+    // Do not overlap a previous rail motion command with a new one.
+    if (!previous_command_window_elapsed(rail_axis_, rail_ramp_ms_)) {return;}
+    if (stop_attempt_initialized_[static_cast<std::size_t>(rail_axis_)] &&
+        (!rail_physically_stopped ||
+         !previous_stop_window_elapsed(rail_axis_, rail_ramp_ms_))) {return;}
+
     // New non-zero Axis3 MoveVelocity.
     const double plc_velocity_mmps =
       rail_target_mps * velocity_scale_ * rail_sign_;
@@ -2551,6 +3792,7 @@ private:
       rail_axis_,
       plc_velocity_mmps);
 
+    if (diagnostic_read_only_) return;
     const int32_t result =
       MoveVelocity(
         static_cast<uint32_t>(rail_axis_),
@@ -2560,6 +3802,7 @@ private:
 
     if (result == NO_ERR_TcMCFUN) {
       applied_rail_mps_ = rail_target_mps;
+      note_move_accepted(rail_axis_, rail_target_mps);
       rail_last_move_tx_tp_ = now_tp;
       rail_last_move_tx_initialized_ = true;
 
@@ -2572,6 +3815,15 @@ private:
           rail_target_mps);
       }
     } else {
+      if (is_ads_device_busy(result)) {
+        enter_safe_stop(std::string("Rail MoveVelocity BUSY Axis") +
+          std::to_string(rail_axis_));
+        safe_stop_active_ = false;  // Never follow PLC BUSY with StopMove spam.
+        RCLCPP_ERROR(this->get_logger(),
+          "[RAIL MOVE BUSY NO RETRY] Axis%d; PLC operator intervention required.",
+          rail_axis_);
+        return;
+      }
       RCLCPP_ERROR_THROTTLE(
         this->get_logger(),
         *this->get_clock(),
@@ -2597,6 +3849,19 @@ private:
     const char * label)
   {
     constexpr double kZeroMps = 1.0e-6;
+    std::array<AxisStatus, 3> axis_feedback{};
+    if (!read_axis_status(axis_feedback) || has_any_fault(axis_feedback)) {
+      return;  // Missing feedback is not permission to issue an ADS command.
+    }
+    const auto & feedback = axis_feedback[static_cast<std::size_t>(axis - 1)];
+    const bool plc_stopped = axis_is_physically_stopped(feedback, sign);
+    const auto axis_idx = static_cast<std::size_t>(axis);
+    if (stop_attempt_initialized_[axis_idx]) {
+      if (!plc_stopped || !previous_stop_window_elapsed(axis, ramp_ms)) {
+        return;  // STOP still in progress: never MOVE or STOP again.
+      }
+      // Keep the STOP one-shot gate until the next MOVE is accepted.
+    }
 
     // ------------------------------------------------------------
     // A) Direction-change STOP already accepted.
@@ -2605,11 +3870,11 @@ private:
     if (waiting_for_stop) {
       pending_target_mps = target_mps;
 
-      if (std::fabs(actual_mps) > stopped_velocity_threshold_mps_) {
-        return;
+      if (!plc_stopped) {
+        return;  // Do not reverse before PLC bNotMoving and speed agree.
       }
 
-      // Physical velocity is now near zero.
+      // Physical stop confirmed.
       applied_mps = 0.0;
 
       // User/watchdog changed the desired target to STOP while decelerating.
@@ -2635,12 +3900,15 @@ private:
     if (std::fabs(target_mps) <= kZeroMps) {
       pending_target_mps = 0.0;
 
-      if (
-        std::fabs(applied_mps) <= kZeroMps &&
-        std::fabs(actual_mps) <= stopped_velocity_threshold_mps_)
-      {
+      if (plc_stopped) {
         waiting_for_stop = false;
         applied_mps = 0.0;
+        return;
+      }
+      if (std::fabs(feedback.lActVelocity / velocity_scale_) <=
+          stop_suppress_velocity_mps_) {
+        // PLC says bNotMoving=false; do not issue STOP on nearly zero speed.
+        // Also do not re-arm motion until a proper stationary signal arrives.
         return;
       }
 
@@ -2658,6 +3926,10 @@ private:
       return;
     }
 
+    if (stop_attempt_initialized_[axis_idx] && !plc_stopped) {
+      return;
+    }
+
     // ------------------------------------------------------------
     // C) Same requested speed -> no new ADS command.
     // ------------------------------------------------------------
@@ -2671,6 +3943,7 @@ private:
     //    opposite direction. Retry STOP later.
     // ------------------------------------------------------------
     if (
+      !plc_stopped &&
       std::fabs(applied_mps) > kZeroMps &&
       target_mps * applied_mps < 0.0)
     {
@@ -2716,6 +3989,9 @@ private:
       last_move_attempt_tp_[idx] = now_tp;
     }
 
+    // PLC methods must not overlap. A ramp+margin software gate is used
+    // until the vendor exposes explicit MoveVelocity_Status completion bits.
+    if (!previous_command_window_elapsed(axis, ramp_ms)) {return;}
     // Re-check the safety latch immediately before the vendor API call.
     if (fault_latched_ || safe_stop_latched_ || !motion_ready_) {
       return;
@@ -2746,6 +4022,7 @@ private:
       "[MOVE TX] Axis%d target=%+.1f mm/s",
       axis, plc_velocity_mmps);
 
+    if (diagnostic_read_only_) return;
     const int32_t result =
       MoveVelocity(
         static_cast<uint32_t>(axis),
@@ -2755,6 +4032,7 @@ private:
 
     if (result == NO_ERR_TcMCFUN) {
       applied_mps = target_mps;
+      note_move_accepted(axis, target_mps);
 
       if (log_motion_commands_) {
         RCLCPP_INFO(
@@ -2766,6 +4044,14 @@ private:
           target_mps);
       }
     } else {
+      if (is_ads_device_busy(result)) {
+        enter_safe_stop(std::string("MoveVelocity BUSY Axis") + std::to_string(axis));
+        safe_stop_active_ = false;  // No automatic StopMove on a BUSY drive.
+        RCLCPP_ERROR(this->get_logger(),
+          "[MOVE BUSY NO RETRY] Axis%d. ROS motion blocked; "
+          "PLC safety stop/operator intervention required.", axis);
+        return;
+      }
       RCLCPP_ERROR_THROTTLE(
         this->get_logger(),
         *this->get_clock(),
@@ -2953,17 +4239,22 @@ private:
       msg.data = "AGV ADS Driver: MOCK MODE";
     } else if (!ads_connected_) {
       msg.data = "AGV ADS Driver: ADS DISCONNECTED";
+    } else if (reset_rearm_pending_) {
+      msg.data = "AGV ADS Driver: RESET REQUESTED / PLC RE-ARM PENDING";
     } else if (safe_stop_latched_) {
       msg.data = "AGV ADS Driver: SAFE STOP LATCHED / " + safe_stop_reason_;
     } else if (fault_latched_) {
       msg.data = "AGV ADS Driver: AXIS FAULT LATCHED";
+    } else if (diagnostic_read_only_) {
+      msg.data = "AGV ADS Driver: DIAGNOSTIC READ-ONLY / NO ADS MOTION WRITES";
     } else if (!motion_ready_) {
       msg.data = "AGV ADS Driver: CONNECTED / MOTION NOT READY";
     } else {
       msg.data =
         "AGV ADS Driver: READY / rail_state=" + rail_state_ +
         " / wheels=" + std::string(wheel_axes_enabled_ ? "ENABLE" : "DISABLE") +
-        " / rail=" + std::string(rail_axis_enabled_ ? "ENABLE" : "DISABLE");
+        " / rail=" + std::string(rail_axis_enabled_ ? "ENABLE" : "DISABLE") +
+        " / dual_opt_in=" + std::string(allow_simultaneous_drive_ ? "ON" : "OFF");
     }
 
     status_pub_->publish(msg);
@@ -2986,10 +4277,16 @@ private:
   std::string safe_stop_reason_;
 
   bool shutting_down_{false};
+  bool reset_rearm_pending_{false};
+  bool stale_recovery_pending_{false};
+  bool stale_recovery_stops_sent_{false};
+  uint32_t stale_recovery_mask_{0};
+  std::chrono::steady_clock::time_point stale_recovery_started_{};
+  std::chrono::steady_clock::time_point reset_rearm_started_{};
 
-  // Mechanical mode / servo power safety interlock.
-  // Ground mode: Wheels ENABLE, Rail DISABLE.
-  // Rail mode (ON_RAIL/WORKING/EXITING): Wheels DISABLE, Rail ENABLE.
+  // Legacy power interlock remains default. Only an explicit experimental
+  // opt-in allows independent wheel and rail enables/motion commands. The
+  // hardware/PLC safety protection must be independently validated.
   std::string rail_state_{"OUT_RAIL"};
   bool wheel_axes_enabled_{false};
   bool rail_axis_enabled_{false};
@@ -3020,15 +4317,28 @@ private:
 
   double wheel_command_epsilon_mps_{0.005};
   double wheel_move_command_min_interval_ms_{100.0};
+  double ads_command_settle_extra_ms_{150.0};
+  double stop_suppress_velocity_mps_{0.002};
+  double axis_notification_max_age_sec_{1.5};
   double wheel_stop_pending_timeout_sec_{4.0};
   double rail_command_epsilon_mps_{0.001};
 
   bool power_enable_on_start_{true};
+  bool diagnostic_read_only_{false};
+  double startup_power_transition_timeout_sec_{5.0};
   bool power_disable_on_shutdown_{true};
+  double shutdown_poweroff_timeout_sec_{7.0};
+  bool allow_simultaneous_drive_{false};
+  double dual_wheel_axis_max_mps_{0.05};
+  double dual_rail_max_mps_{0.10};
   bool log_motion_commands_{false};
 
   bool log_axis_monitor_{true};
   double axis_monitor_period_sec_{0.5};
+  double diagnostic_ads_poll_period_sec_{0.5};
+  double ads_slow_read_warn_ms_{100.0};
+  bool last_diagnostic_poll_initialized_{false};
+  std::chrono::steady_clock::time_point last_diagnostic_poll_tp_{};
 
   // Environmental sensor over Beckhoff ADS.
   bool enable_environment_sensor_{true};
@@ -3044,17 +4354,29 @@ private:
   // Index 1..3 maps directly to Beckhoff Axis1..Axis3.
   std::array<std::chrono::steady_clock::time_point, 4> last_stop_attempt_tp_{};
   std::array<bool, 4> stop_attempt_initialized_{{false, false, false, false}};
+  // Per axis: last accepted MoveVelocity time (for command overlap prevention).
+  std::array<std::chrono::steady_clock::time_point, 4> last_accepted_move_tp_{};
+  std::array<bool, 4> last_accepted_move_initialized_{{false, false, false, false}};
+  std::array<double, 4> last_accepted_target_mps_{{0.0, 0.0, 0.0, 0.0}};
+  std::array<bool, 4> move_feedback_stable_initialized_{{false, false, false, false}};
+  std::array<std::chrono::steady_clock::time_point, 4> move_feedback_stable_since_{};
+  std::array<std::chrono::steady_clock::time_point, 4> last_stop_tx_tp_{};
+  std::array<bool, 4> last_stop_tx_initialized_{{false, false, false, false}};
+  // Inactive MC_Stop FB may report Busy=0, Done=0.  Track continuous
+  // idle+standstill feedback before allowing new motion for that axis.
+  std::array<bool, 4> stop_idle_confirm_initialized_{{false, false, false, false}};
+  std::array<std::chrono::steady_clock::time_point, 4> stop_idle_confirm_since_{};
   std::array<std::chrono::steady_clock::time_point, 4> last_move_attempt_tp_{};
   std::array<bool, 4> move_attempt_initialized_{{false, false, false, false}};
 
   bool wheel_stop_pending_{false};
   std::chrono::steady_clock::time_point wheel_stop_pending_since_{};
 
-  // Beckhoff ADS Notification cache. Registered once after Connect().
-  // This replaces periodic ReadAxisStatus() polling.
-  std::array<AxisStatus, 3> axis_status_notification_cache_{};
-  bool axis_status_notification_registered_{false};
-  std::chrono::steady_clock::time_point axis_status_notification_registered_at_{};
+  // No modification to TcMC/TcMCApi vendor sources: direct status reader.
+  PlcFbStatusReader plc_fb_reader_{};
+  std::array<AxisStatus, 3> axis_snapshot_{};
+  bool axis_snapshot_valid_{false};
+  std::chrono::steady_clock::time_point axis_snapshot_time_{};
 
   bool axis_state_initialized_{false};
   bool prev_left_ready_{false};
@@ -3148,6 +4470,7 @@ private:
     environment_co2_pub_;
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_faults_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr recover_stale_jobs_srv_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr wheel_power_srv_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr rail_power_srv_;
   rclcpp::TimerBase::SharedPtr timer_;

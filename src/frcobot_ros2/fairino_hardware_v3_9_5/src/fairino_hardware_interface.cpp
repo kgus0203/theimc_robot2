@@ -131,7 +131,10 @@ hardware_interface::CallbackReturn FairinoHardwareInterface::on_activate(const r
     _servo_started = false;
     _control_mode = 0;
     _timing_samples = 0;
-    _slow_servo_calls = 0;
+    _servo_over_10ms = 0;
+    _servo_over_20ms = 0;
+    _servo_consecutive_over_10ms = 0;
+    _servo_max_consecutive_over_10ms = 0;
     _max_read_us = 0;
     _max_servo_us = 0;
     _max_period_us = 0;
@@ -375,21 +378,36 @@ hardware_interface::return_type FairinoHardwareInterface::write(const rclcpp::Ti
     const auto servo_us = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - servo_begin).count();
     _max_servo_us = std::max(_max_servo_us, servo_us);
+    _servo_samples_us[_timing_samples] = servo_us;
     ++_timing_samples;
     if (servo_us > 10000) {
-        ++_slow_servo_calls;
+        ++_servo_over_10ms;
+        ++_servo_consecutive_over_10ms;
+        _servo_max_consecutive_over_10ms = std::max(
+            _servo_max_consecutive_over_10ms, _servo_consecutive_over_10ms);
         RCLCPP_WARN(rclcpp::get_logger("FairinoHardwareInterface"),
                     "ServoJ deadline miss: %.3f ms, rc=%d, controller period=%.3f ms",
                     servo_us / 1000.0, code, period_us / 1000.0);
+    } else {
+        _servo_consecutive_over_10ms = 0;
     }
+    if (servo_us > 20000) ++_servo_over_20ms;
     if (_timing_samples >= 1000) {
+        auto sorted_servo_us = _servo_samples_us;
+        std::sort(sorted_servo_us.begin(), sorted_servo_us.end());
         RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"),
                     "Control timing (1000 cycles): max read=%.3f ms, max ServoJ=%.3f ms, "
-                    "max period=%.3f ms, ServoJ >10ms=%lu",
+                    "ServoJ p95=%.3f ms, p99=%.3f ms, max period=%.3f ms, "
+                    "ServoJ >10ms=%lu, >20ms=%lu, max consecutive >10ms=%lu",
                     _max_read_us / 1000.0, _max_servo_us / 1000.0,
-                    _max_period_us / 1000.0, _slow_servo_calls);
+                    sorted_servo_us[949] / 1000.0, sorted_servo_us[989] / 1000.0,
+                    _max_period_us / 1000.0, _servo_over_10ms, _servo_over_20ms,
+                    _servo_max_consecutive_over_10ms);
         _timing_samples = 0;
-        _slow_servo_calls = 0;
+        _servo_over_10ms = 0;
+        _servo_over_20ms = 0;
+        _servo_consecutive_over_10ms = 0;
+        _servo_max_consecutive_over_10ms = 0;
         _max_read_us = 0;
         _max_servo_us = 0;
         _max_period_us = 0;

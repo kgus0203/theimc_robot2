@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fairino FR5 속도·가속도 단계별 시험 보고서 — 2026-10-23</title>
+  <style>
+    :root {
+      --ink:#172033; --muted:#5f6b7a; --line:#dfe5ec; --blue:#2563eb;
+      --cyan:#0891b2; --green:#16845b; --amber:#c27a0a; --red:#dc3545;
+      --panel:#f7f9fc; --navy:#1e3a5f;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#eef2f7;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif; line-height:1.65; }
+    main { max-width:1120px; margin:32px auto; padding:48px 56px; background:#fff;
+      box-shadow:0 10px 35px rgba(22,34,51,.08); border-radius:16px; }
+    h1 { margin:0 0 8px; font-size:34px; line-height:1.25; letter-spacing:-.03em; }
+    h2 { margin:44px 0 16px; padding-bottom:8px; font-size:23px; border-bottom:2px solid var(--line); }
+    h3 { margin:25px 0 10px; font-size:18px; }
+    p { margin:9px 0; }
+    .muted { color:var(--muted); }
+    .lead { font-size:18px; color:#334155; }
+    .summary { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:26px 0; }
+    .card { padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+    .card strong { display:block; font-size:24px; color:var(--blue); }
+    .card span { color:var(--muted); font-size:13px; }
+    .ok { color:var(--green); font-weight:700; }
+    .warn-text { color:var(--amber); font-weight:700; }
+    .callout { margin:18px 0; padding:16px 18px; border-left:5px solid var(--blue);
+      background:#eff6ff; border-radius:6px; }
+    .callout.okbox { border-color:var(--green); background:#ecfdf5; }
+    .callout.warn { border-color:var(--amber); background:#fff8e8; }
+    table { width:100%; border-collapse:collapse; margin:14px 0 22px; font-size:14px; }
+    th, td { padding:10px 11px; border:1px solid var(--line); text-align:left; }
+    th { background:#f1f5f9; }
+    td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    tr.recommended td { background:#ecfdf5; }
+    code { padding:2px 5px; border-radius:5px; background:#f1f5f9; color:var(--navy); }
+    ul, ol { padding-left:24px; } li { margin:5px 0; }
+    figure { margin:24px 0; padding:18px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    figcaption { margin-top:10px; color:var(--muted); font-size:13px; }
+    svg { width:100%; height:auto; display:block; }
+    .axis { stroke:#9aa6b2; stroke-width:1; }
+    .grid { stroke:#e5eaf0; stroke-width:1; }
+    .label { fill:#536273; font-size:12px; }
+    .value { fill:#172033; font-size:12px; font-weight:700; }
+    .small { font-size:13px; }
+    .path { overflow-wrap:anywhere; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    footer { margin-top:44px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+    @media (max-width:800px) {
+      main { margin:0; padding:28px 18px; border-radius:0; }
+      .summary { grid-template-columns:1fr 1fr; }
+      table { font-size:12px; }
+      th, td { padding:7px 6px; }
+    }
+    @media print { body{background:#fff} main{margin:0;max-width:none;box-shadow:none;padding:20px} }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="muted">실험일 2026-10-23 · ROS 2 Humble · MoveIt 2 · ros2_control · FAIRINO FR5</div>
+    <h1>Fairino FR5 실제 운전 속도 상향 시험 보고서</h1>
+    <p class="lead">오른쪽 상단 3개 촬영 좌표를 대상으로 속도와 가속도를 단계적으로 높여,
+      실제 이동시간 단축 효과와 추종 안정성 및 통신 지연을 검증했다.</p>
+  </header>
+
+  <section class="summary">
+    <div class="card"><strong>42 / 42</strong><span>전체 좌표 이동 성공</span></div>
+    <div class="card"><strong>14 / 14</strong><span>대기 자세 복귀 성공</span></div>
+    <div class="card"><strong>0.035815 rad</strong><span>전체 최대 추종 오차</span></div>
+    <div class="card"><strong>0.40 / 0.10</strong><span>권장 속도 / 가속도</span></div>
+  </section>
+
+  <div class="callout okbox"><strong>결론:</strong> 현재 오른쪽 상단 3좌표 경로에서는 기존 운전값보다
+    속도와 가속도를 높여도 안정적으로 운전할 수 있다. <strong>0.40 / 0.10</strong>까지 모든 시험이 성공했고,
+    추종오차·ServoJ 지연·로봇 알람 모두 중단 기준 안에 충분히 머물렀다. 이 설정은
+    <strong>0.20 / 0.05 대비 총 이동시간을 약 26.5% 단축</strong>했다.</div>
+
+  <h2>1. 시험 목적과 조건</h2>
+  <p>이전 시험에서는 속도 0.15, 가속도 0.03까지 안정적으로 동작했지만 낮은 가속도 때문에
+    속도를 높여도 이동시간 단축 효과가 작았다. 이번에는 속도와 가속도를 함께 높여 실제 생산성 향상
+    가능성을 확인했다.</p>
+  <table>
+    <tbody>
+      <tr><th>시험 경로</th><td>기존 오른쪽 상단 3개 좌표</td></tr>
+      <tr><th>반복 방식</th><td>설정별 2회, 매회 3좌표 이동 후 대기 자세 복귀</td></tr>
+      <tr><th>제어 주기</th><td>100 Hz</td></tr>
+      <tr><th>ServoJ cmdT</th><td>0.008초 고정</td></tr>
+      <tr><th>Path tolerance</th><td>0.2 rad 고정</td></tr>
+      <tr><th>기록</th><td><code>/fairino5_controller/controller_state</code>, <code>/arm/joint_states</code>, 하드웨어 로그</td></tr>
+      <tr><th>재시험</th><td>0.45 / 0.10은 시간 편차와 9.911 ms 호출시간 확인을 위해 1세트 추가</td></tr>
+    </tbody>
+  </table>
+
+  <h3>중단 및 경고 기준</h3>
+  <ul>
+    <li>최대 추종오차 0.10 rad 이상이면 중단, 0.05 rad 초과 시 경고</li>
+    <li><code>PATH_TOLERANCE_VIOLATED</code>, ServoJ code 14, Action 실패 또는 대기 자세 복귀 실패 시 중단</li>
+    <li>ServoJ 호출시간 20 ms 초과 또는 10 ms 연속 초과 시 중단</li>
+    <li>실제 로봇 알람 main/sub가 0/0이 아니거나 비정상적인 움직임이 확인되면 중단</li>
+  </ul>
+
+  <h2>2. 단계별 결과</h2>
+  <table>
+    <thead><tr>
+      <th>속도 / 가속도</th><th class="num">성공 좌표</th><th class="num">총 이동시간</th>
+      <th class="num">최대 오차</th><th class="num">P99 오차</th><th class="num">ServoJ 최대</th><th>판정</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>0.20 / 0.05</td><td class="num">6/6</td><td class="num">151.206초</td><td class="num">0.025128</td><td class="num">0.018742</td><td class="num">7.899 ms</td><td class="ok">통과</td></tr>
+      <tr><td>0.25 / 0.05</td><td class="num">6/6</td><td class="num">159.273초</td><td class="num">0.025271</td><td class="num">0.018508</td><td class="num">6.299 ms</td><td class="ok">통과</td></tr>
+      <tr><td>0.30 / 0.07</td><td class="num">6/6</td><td class="num">137.652초</td><td class="num">0.029490</td><td class="num">0.021956</td><td class="num">6.424 ms</td><td class="ok">통과</td></tr>
+      <tr><td>0.35 / 0.07</td><td class="num">6/6</td><td class="num">126.284초</td><td class="num">0.029450</td><td class="num">0.022104</td><td class="num">6.333 ms</td><td class="ok">통과</td></tr>
+      <tr class="recommended"><td><strong>0.40 / 0.10</strong></td><td class="num">6/6</td><td class="num"><strong>111.163초</strong></td><td class="num">0.035815</td><td class="num">0.026160</td><td class="num">6.234 ms</td><td class="ok">권장</td></tr>
+      <tr><td>0.45 / 0.10</td><td class="num">6/6</td><td class="num">126.731초</td><td class="num">0.035446</td><td class="num">0.025813</td><td class="num">9.911 ms</td><td class="ok">통과</td></tr>
+      <tr><td>0.45 / 0.10 재시험</td><td class="num">6/6</td><td class="num">111.941초</td><td class="num">0.035196</td><td class="num">0.026031</td><td class="num">6.058 ms</td><td class="ok">통과</td></tr>
+    </tbody>
+  </table>
+  <p class="small">오차 단위는 rad이다. ServoJ P95/P99는 각 1,000회 측정 블록 중 가장 큰 블록 백분위값을 사용했다.</p>
+
+  <figure>
+    <svg viewBox="0 0 980 410" role="img" aria-label="속도 가속도별 총 이동시간 막대그래프">
+      <text x="20" y="25" class="value" font-size="16">설정별 총 이동시간 (2회 합계, 낮을수록 좋음)</text>
+      <line x1="80" y1="330" x2="950" y2="330" class="axis"/>
+      <line x1="80" y1="55" x2="80" y2="330" class="axis"/>
+      <line x1="80" y1="86" x2="950" y2="86" class="grid"/><text x="22" y="90" class="label">160초</text>
+      <line x1="80" y1="208" x2="950" y2="208" class="grid"/><text x="22" y="212" class="label">80초</text>
+      <rect x="105" y="99" width="88" height="231" rx="5" fill="#94a3b8"/>
+      <rect x="224" y="86" width="88" height="244" rx="5" fill="#94a3b8"/>
+      <rect x="343" y="119" width="88" height="211" rx="5" fill="#0891b2"/>
+      <rect x="462" y="137" width="88" height="193" rx="5" fill="#0891b2"/>
+      <rect x="581" y="160" width="88" height="170" rx="5" fill="#16845b"/>
+      <rect x="700" y="136" width="88" height="194" rx="5" fill="#2563eb"/>
+      <rect x="819" y="159" width="88" height="171" rx="5" fill="#60a5fa"/>
+      <text x="111" y="91" class="value">151.2</text><text x="230" y="78" class="value">159.3</text>
+      <text x="349" y="111" class="value">137.7</text><text x="468" y="129" class="value">126.3</text>
+      <text x="587" y="152" class="value">111.2</text><text x="706" y="128" class="value">126.7</text>
+      <text x="825" y="151" class="value">111.9</text>
+      <text x="110" y="351" class="label">.20/.05</text><text x="229" y="351" class="label">.25/.05</text>
+      <text x="348" y="351" class="label">.30/.07</text><text x="467" y="351" class="label">.35/.07</text>
+      <text x="586" y="351" class="label">.40/.10</text><text x="705" y="351" class="label">.45/.10</text>
+      <text x="819" y="351" class="label">.45 재시험</text>
+      <text x="350" y="390" class="label">velocity scale / acceleration scale</text>
+    </svg>
+    <figcaption>0.40 / 0.10에서 가장 짧은 총 이동시간을 기록했다. 0.45 결과의 편차는 무작위 OMPL 경로 차이로 확인됐다.</figcaption>
+  </figure>
+
+  <figure>
+    <svg viewBox="0 0 980 410" role="img" aria-label="속도 가속도별 최대 추종오차 그래프">
+      <text x="20" y="25" class="value" font-size="16">설정별 최대 추종오차</text>
+      <line x1="80" y1="330" x2="950" y2="330" class="axis"/>
+      <line x1="80" y1="55" x2="80" y2="330" class="axis"/>
+      <line x1="80" y1="193" x2="950" y2="193" stroke="#c27a0a" stroke-width="2" stroke-dasharray="7 5"/>
+      <text x="82" y="184" class="label">경고 0.05 rad</text>
+      <line x1="80" y1="55" x2="950" y2="55" stroke="#dc3545" stroke-width="2" stroke-dasharray="7 5"/>
+      <text x="82" y="47" class="label">중단 0.10 rad</text>
+      <polyline fill="none" stroke="#2563eb" stroke-width="4"
+        points="145,261 264,261 383,249 502,249 621,232 740,233 859,233"/>
+      <circle cx="145" cy="261" r="6" fill="#2563eb"/><circle cx="264" cy="261" r="6" fill="#2563eb"/>
+      <circle cx="383" cy="249" r="6" fill="#2563eb"/><circle cx="502" cy="249" r="6" fill="#2563eb"/>
+      <circle cx="621" cy="232" r="7" fill="#16845b"/><circle cx="740" cy="233" r="6" fill="#2563eb"/>
+      <circle cx="859" cy="233" r="6" fill="#60a5fa"/>
+      <text x="119" y="253" class="value">.0251</text><text x="238" y="253" class="value">.0253</text>
+      <text x="357" y="241" class="value">.0295</text><text x="476" y="241" class="value">.0294</text>
+      <text x="595" y="224" class="value">.0358</text><text x="714" y="225" class="value">.0354</text>
+      <text x="833" y="225" class="value">.0352</text>
+      <text x="110" y="351" class="label">.20/.05</text><text x="229" y="351" class="label">.25/.05</text>
+      <text x="348" y="351" class="label">.30/.07</text><text x="467" y="351" class="label">.35/.07</text>
+      <text x="586" y="351" class="label">.40/.10</text><text x="705" y="351" class="label">.45/.10</text>
+      <text x="819" y="351" class="label">.45 재시험</text>
+    </svg>
+    <figcaption>속도·가속도 상향에 따라 오차는 완만하게 증가했지만, 전체 최대 0.035815 rad로 경고 기준의 약 71.6%에 머물렀다.</figcaption>
+  </figure>
+
+  <h2>3. 속도 상향 효과</h2>
+  <h3>이동시간 단축</h3>
+  <ul>
+    <li><strong>0.20 / 0.05 → 0.40 / 0.10:</strong> 151.206초에서 111.163초로 <strong>40.043초, 약 26.5% 단축</strong></li>
+    <li><strong>이전 0.15 / 0.03 → 0.40 / 0.10:</strong> 회차 평균 94.286초에서 55.582초로 <strong>약 41.0% 단축</strong></li>
+    <li>촬영 좌표 간 이동 대기시간이 줄어 한 번의 검사 작업을 더 빠르게 끝낼 수 있다.</li>
+    <li>같은 운영시간 동안 수행할 수 있는 검사 횟수가 늘고, 로봇 이동 중 발생하는 비생산 시간이 감소한다.</li>
+  </ul>
+
+  <h3>가속도 증가의 효과</h3>
+  <p>짧은 좌표 구간에서는 최고속도에 도달하기 전에 감속하는 경우가 많다. 따라서 속도만 높이는 것보다
+    가속도를 <code>0.03 → 0.07 → 0.10</code>으로 함께 올렸을 때 시간 단축 효과가 뚜렷했다.
+    0.40 / 0.10은 빠른 가감속으로 짧은 이동 구간에서도 설정 속도를 더 적극적으로 사용했다.</p>
+
+  <h2>4. 안정성 분석</h2>
+  <table>
+    <thead><tr><th>검사항목</th><th>전체 결과</th><th>판정</th></tr></thead>
+    <tbody>
+      <tr><td>좌표 이동</td><td>42/42 성공</td><td class="ok">정상</td></tr>
+      <tr><td>대기 자세 복귀</td><td>14/14 성공</td><td class="ok">정상</td></tr>
+      <tr><td>전체 최대 추종오차</td><td>J5, 0.035815 rad</td><td class="ok">0.05 경고 기준 미만</td></tr>
+      <tr><td>0.05 / 0.10 / 0.15 / 0.20 rad 초과</td><td>모두 0회</td><td class="ok">정상</td></tr>
+      <tr><td>ServoJ 측정</td><td>약 111,000회, 최대 9.911 ms</td><td class="ok">10 ms 초과 0회</td></tr>
+      <tr><td>PATH_TOLERANCE_VIOLATED</td><td>0회</td><td class="ok">정상</td></tr>
+      <tr><td>ServoJ code 14</td><td>0회</td><td class="ok">정상</td></tr>
+      <tr><td>실제 로봇 알람</td><td>모든 종료 확인 main=0, sub=0</td><td class="ok">정상</td></tr>
+      <tr><td>반복에 따른 오차 누적</td><td>관찰되지 않음</td><td class="ok">정상</td></tr>
+    </tbody>
+  </table>
+  <p>모든 단계에서 최대 오차가 주로 J5에서 발생했지만, 반복할수록 증가하는 패턴은 없었다.
+    0.45 첫 시험의 ServoJ 최대 9.911 ms도 재시험에서는 6.058 ms였으며 10 ms를 넘지 않았다.</p>
+
+  <h2>5. 운영 권장값</h2>
+  <div class="callout"><strong>권장 운영값: velocity scale 0.40 / acceleration scale 0.10</strong><br>
+    오늘 시험 중 가장 짧은 이동시간을 기록했고, 최대 추종오차 0.035815 rad와 ServoJ 최대 6.234 ms로
+    충분한 여유를 유지했다. 기존 cmdT 0.008초와 path tolerance 0.2 rad는 그대로 유지한다.</div>
+  <p><strong>0.45 / 0.10도 제어 안정성 시험은 통과</strong>했으므로 속도를 더 높여 운전하는 것 자체는 가능하다.
+    다만 두 시험의 이동시간 편차가 컸고, 재시험 시간도 0.40보다 약 0.7% 길어 현재 경로에서는
+    추가 속도 상향에 따른 실질적인 이득이 확인되지 않았다.</p>
+  <p>보수적인 설정이 필요한 경우에는 <strong>0.35 / 0.07</strong>을 사용할 수 있다. 이 설정도
+    0.20 / 0.05 대비 약 16.5% 빠르며 최대 오차는 0.029450 rad에 그쳤다.</p>
+
+  <h2>6. 데이터 저장 위치</h2>
+  <table>
+    <thead><tr><th>설정</th><th>rosbag 및 요약 JSON 경로</th></tr></thead>
+    <tbody>
+      <tr><td>0.20 / 0.05</td><td class="path">/tmp/fairino_speed_v020_a005_right3_r2</td></tr>
+      <tr><td>0.25 / 0.05</td><td class="path">/tmp/fairino_speed_v025_a005_right3_r2</td></tr>
+      <tr><td>0.30 / 0.07</td><td class="path">/tmp/fairino_speed_v030_a007_right3_r2</td></tr>
+      <tr><td>0.35 / 0.07</td><td class="path">/tmp/fairino_speed_v035_a007_right3_r2</td></tr>
+      <tr><td>0.40 / 0.10</td><td class="path">/tmp/fairino_speed_v040_a010_right3_r2</td></tr>
+      <tr><td>0.45 / 0.10</td><td class="path">/tmp/fairino_speed_v045_a010_right3_r2</td></tr>
+      <tr><td>0.45 / 0.10 재시험</td><td class="path">/tmp/fairino_speed_v045_a010_right3_r2_20261023_114846</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. 적용 범위와 후속 확인</h2>
+  <ul>
+    <li>이번 결론은 실제 FR5의 <strong>오른쪽 상단 3개 좌표</strong> 경로에 대한 결과다.</li>
+    <li>운영 적용 전 전체 오른쪽 9개 좌표와 좌우 전환 경로에서도 0.40 / 0.10 반복 운전을 권장한다.</li>
+    <li>OMPL 경로가 매회 달라 이동시간 비교에 편차가 생겼다. 정밀 비교가 필요하면 계획 궤적을 고정해 재생해야 한다.</li>
+    <li>장시간 운영에서도 ServoJ 호출시간, J5 최대 오차, 알람 main/sub를 계속 기록하는 것이 좋다.</li>
+  </ul>
+
+  <div class="callout warn"><strong>최종 판정:</strong> 속도 상향은 가능하며 실제 검사 시간을 줄이는 효과가 있다.
+    현재 측정 범위에서 안정성과 시간 단축 효과가 가장 균형적인 값은 <strong>0.40 / 0.10</strong>이다.</div>
+
+  <footer>작성일: 2026-10-23 (Asia/Seoul) · 그래프는 rosbag 및 stage_summary.json 분석값으로 작성한 인라인 SVG이며 외부 파일이 필요 없다.</footer>
+</main></body>
+</html>

@@ -21,5 +21,11 @@ rosidl_get_typesupport_target(scan_typesupport ${PROJECT_NAME} rosidl_typesuppor
 target_link_libraries(waypoint_test "${scan_typesupport}")
 ament_export_dependencies(rosidl_default_runtime)
 install(TARGETS waypoint_test DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/speed_stage_test.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME speed_stage_test)
+install(PROGRAMS scripts/finalize_speed_stage.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME finalize_speed_stage)
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 ament_package()

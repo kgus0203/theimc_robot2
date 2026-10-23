@@ -63,7 +63,11 @@ private:
   bool _servo_started{false};
   bool _faulted{false};
   uint64_t _timing_samples{0};
-  uint64_t _slow_servo_calls{0};
+  uint64_t _servo_over_10ms{0};
+  uint64_t _servo_over_20ms{0};
+  uint64_t _servo_consecutive_over_10ms{0};
+  uint64_t _servo_max_consecutive_over_10ms{0};
+  std::array<int64_t, 1000> _servo_samples_us{};
   int64_t _max_read_us{0};
   int64_t _max_servo_us{0};
   int64_t _max_period_us{0};
