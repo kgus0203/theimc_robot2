@@ -183,8 +183,9 @@ def generate_launch_description():
     #   Axis 3     = rail motor
     #
     # Wheel dimensions:
-    #   diameter            = 0.206 m
-    #   center-to-center    = 0.804 m
+    #   diameter            = 0.2032 m (8 inch)
+    #   center-to-center    = 0.930 m
+    #   rail wheel diameter = 0.130 m (already handled by PLC)
     #
     # NOTE:
     # left/right physical Axis 1/2 mapping and direction signs still
@@ -214,24 +215,28 @@ def generate_launch_description():
                 'rail_sign': 1.0,
 
                 # Actual drive-wheel geometry
-                'wheel_separation_m': 0.804,
-                'wheel_diameter_m': 0.206,
+                'wheel_separation_m': 0.930,
+                'wheel_diameter_m': 0.2032,
 
                 # ROS m/s -> Beckhoff mm/s
                 'velocity_scale': 1000.0,
 
                 # Beckhoff MoveVelocity parameters
-                'wheel_ramp_ms': 700.0,
-                'rail_ramp_ms': 700.0,
+                'wheel_ramp_ms': 1000.0,
+                'rail_ramp_ms': 1000.0,
                 'jerk_percent': 100.0,
+                'rail_direction_stop_hold_ms': 200.0,
 
                 # Command watchdogs
-                'cmd_vel_timeout_sec': 1.0,  # prevent unbounded stale drive commands
-                'rail_cmd_timeout_sec': 1.0,  # diagnostic; fresh teleop commands at 10Hz
+                'cmd_vel_timeout_sec': 10.0,  # requested ROS watchdog; independent PLC watchdog required
+                'rail_cmd_timeout_sec': 10.0,  # requested ROS watchdog; independent PLC watchdog required
                 # ADS motion command serialization (conservative ramp+margin).
                 # Does not replace checking PLC MoveVelocity_Status/Stop_Status.
                 'ads_command_settle_extra_ms': 150.0,
+                'wheel_move_command_min_interval_ms': 100.0,
                 'stop_suppress_velocity_mps': 0.002,
+                'stopped_velocity_threshold_mps': 0.01,
+                'wheel_stop_pending_timeout_sec': 4.0,
 
 
                 # Do not resend nearly-identical velocity commands
@@ -249,13 +254,14 @@ def generate_launch_description():
                 # Keep strict NC/FB interlocks; do not treat speed=0 as NotMoving.
                 'startup_power_transition_timeout_sec': 5.0,
                 'allow_simultaneous_drive': False,
+                'auto_reset_axis_fault': False,  # operator-initiated reset only
                 'log_axis_monitor': True,
                 'axis_monitor_period_sec': 0.5,
                 'diagnostic_ads_poll_period_sec': 0.5,
                 'ads_slow_read_warn_ms': 100.0,
 
                 # Suppress repetitive normal-motion logs.
-                'log_motion_commands': True,
+                'log_motion_commands': False,  # reduce repetitive 20 Hz log output
             }
         ],
     )

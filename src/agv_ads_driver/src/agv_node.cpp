@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <utility>
 
@@ -208,15 +209,19 @@ public:
 
     // IMPORTANT: set the real center-to-center distance between
     // left/right drive wheels before field driving.
-    this->declare_parameter<double>("wheel_separation_m", 1.0);
+    this->declare_parameter<double>("wheel_separation_m", 0.930);
 
-    // Vendor confirmed driving wheel diameter = 206 mm.
-    this->declare_parameter<double>("wheel_diameter_m", 0.206);
+    // Measured driving-wheel nominal diameter = 8 in = 203.2 mm.
+    // Only used to convert PLC-provided linear wheel speed to joint angular speed
+    // for /joint_states; NEVER used to rescale ADS wheel velocity/position.
+    this->declare_parameter<double>("wheel_diameter_m", 0.2032);
 
     // Vendor confirmed API units:
     // MoveVelocity velocity = mm/s
     // AxisStatus.lActVelocity = mm/s
     // AxisStatus.lActPosition = mm
+    // PLC already accounts for wheel/rail wheel sizes (rail wheel: 130 mm),
+    // gearing and encoder scaling. No second diameter/gear conversion here.
     this->declare_parameter<double>("velocity_scale", 1000.0);  // m/s -> mm/s
 
     // Vendor confirmed:
@@ -246,8 +251,8 @@ public:
     // Conservative inter-command delay: move ramp + margin. This is NOT
     // proof that MC function blocks finished; PLC Method status is preferable.
     this->declare_parameter<double>("ads_command_settle_extra_ms", 150.0);
-    // When reported speed is essentially zero, never issue a redundant STOP.
-    // This threshold is only for suppressing StopMove, NOT for PowerDisable.
+    // Suppress STOP at near-zero speed ONLY when no PLC job is active.
+    // HasJob=1 at zero speed may be a stalled axis with retained command.
     this->declare_parameter<double>("stop_suppress_velocity_mps", 0.002);
     this->declare_parameter<double>("axis_notification_max_age_sec", 1.5);
     // BUSY stop interlock: block new wheel motion until both wheels stop.
@@ -457,6 +462,9 @@ public:
       this->create_publisher<std_msgs::msg::String>(
       "/agv_status", 10);
 
+    axis_diagnostics_pub_ = this->create_publisher<std_msgs::msg::String>(
+      "/agv/axis_diagnostics", 10);
+
     // Environmental sensor topics from Beckhoff PLC / Modbus sensor block.
     // /environment/data order:
     //   [0] solar radiation [W/m^2]
@@ -521,6 +529,8 @@ public:
 
     last_cmd_vel_time_ = this->now();
     last_rail_cmd_time_ = this->now();
+    last_cmd_vel_steady_ = std::chrono::steady_clock::now();
+    last_rail_cmd_steady_ = last_cmd_vel_steady_;
     last_feedback_time_ = this->now();
     last_axis_monitor_time_ = this->now();
     last_environment_publish_time_ = this->now();
@@ -666,6 +676,12 @@ private:
     {
       throw std::runtime_error(
               "left/right/rail axis numbers must be different");
+    }
+
+    // Invalid watchdog settings must never silently disable timeout protection.
+    if (!std::isfinite(cmd_vel_timeout_sec_) || cmd_vel_timeout_sec_ <= 0.0 ||
+        !std::isfinite(rail_cmd_timeout_sec_) || rail_cmd_timeout_sec_ <= 0.0) {
+      throw std::runtime_error("wheel/rail command watchdog timeouts must be finite and > 0");
     }
 
     if (!std::isfinite(wheel_separation_m_) || wheel_separation_m_ <= 0.0) {
@@ -1117,21 +1133,29 @@ private:
     const double actual_mps = std::fabs(axis_status.lActVelocity / velocity_scale_);
     const bool not_moving = axis_status.bNotMoving;
 
-    if (not_moving && actual_mps <= stopped_velocity_threshold_mps_) {
+    // A blocked wheel can report zero actual speed while the PLC still owns
+    // an active velocity job. Do not equate zero encoder speed with STOP.
+    if (not_moving && !axis_status.bHasJob &&
+        !axis_status.bMovingFw && !axis_status.bMovingBw &&
+        actual_mps <= stopped_velocity_threshold_mps_) {
       return StopRequestResult::ALREADY_STOPPED;
     }
     if (stop_attempt_initialized_[idx]) {
       return StopRequestResult::ALREADY_REQUESTED;
     }
-    // Some drives report bNotMoving=false while measured velocity is 0.
-    // Never send STOP blindly in that condition; block handovers/re-arms
-    // until bNotMoving confirms a true stationary state.
-    if (actual_mps <= stop_suppress_velocity_mps_) {
+    // Zero velocity with HasJob=1 means a commanded movement can resume when
+    // an obstacle is removed. Allow ONE STOP request for that exact case.
+    // If there is no PLC job, do not blindly STOP an ambiguous stationary axis.
+    if (actual_mps <= stop_suppress_velocity_mps_ && !axis_status.bHasJob) {
       RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 3000,
-        "[STOP HELD] Axis%d speed near zero but bNotMoving=%d. "
-        "No StopMove; awaiting valid standstill feedback (%s)",
-        axis, not_moving ? 1 : 0, context);
+        "[STOP HELD] Axis%d near-zero speed, HasJob=0, NotMoving=%d; "
+        "no blind STOP (%s)", axis, not_moving ? 1 : 0, context);
       return StopRequestResult::WAITING_FOR_PREVIOUS;
+    }
+    if (actual_mps <= stop_suppress_velocity_mps_ && axis_status.bHasJob) {
+      RCLCPP_WARN(this->get_logger(),
+        "[STALLED JOB STOP] Axis%d measured=%.5f m/s HasJob=1; "
+        "issuing ONE STOP without waiting for wheel motion", axis, actual_mps);
     }
     // STOP cancels continuous MoveVelocity.  A running MOVE FB can remain
     // Busy indefinitely; DO NOT wait for ramp+settle or MOVE Busy=0 here.
@@ -2125,6 +2149,7 @@ private:
     }
 
     last_cmd_vel_time_ = this->now();
+    last_cmd_vel_steady_ = std::chrono::steady_clock::now();
 
     if (safe_stop_latched_ || fault_latched_) {
       requested_linear_x_mps_ = 0.0;
@@ -2168,6 +2193,7 @@ private:
     }
 
     last_rail_cmd_time_ = this->now();
+    last_rail_cmd_steady_ = std::chrono::steady_clock::now();
 
     if (safe_stop_latched_ || fault_latched_) {
       requested_rail_speed_mps_ = 0.0;
@@ -2214,6 +2240,16 @@ private:
     }
 
     if (new_state == rail_state_) {
+      return;
+    }
+
+    // Never restart/overwrite a power handover halfway through. The operator
+    // may request the next state only after the previous transition completes.
+    if (!allow_simultaneous_drive_ &&
+        power_transition_stage_ != PowerTransitionStage::NONE) {
+      RCLCPP_WARN(this->get_logger(),
+        "[POWER INTERLOCK] Rejecting %s while transition to %s is in progress",
+        new_state.c_str(), rail_state_.c_str());
       return;
     }
 
@@ -2290,6 +2326,13 @@ private:
     if (!ads_connected_) {
       response->success = false;
       response->message = "ADS is not connected.";
+      return;
+    }
+
+    if (power_transition_stage_ != PowerTransitionStage::NONE ||
+        reset_rearm_pending_ || stale_recovery_pending_) {
+      response->success = false;
+      response->message = "Wheel power denied: transition/reset/recovery in progress.";
       return;
     }
 
@@ -2458,6 +2501,13 @@ private:
     if (!ads_connected_) {
       response->success = false;
       response->message = "ADS is not connected.";
+      return;
+    }
+
+    if (power_transition_stage_ != PowerTransitionStage::NONE ||
+        reset_rearm_pending_ || stale_recovery_pending_) {
+      response->success = false;
+      response->message = "Rail power denied: transition/reset/recovery in progress.";
       return;
     }
 
@@ -2877,6 +2927,8 @@ private:
     motion_ready_ = true;
     last_cmd_vel_time_ = this->now();
     last_rail_cmd_time_ = this->now();
+    last_cmd_vel_steady_ = std::chrono::steady_clock::now();
+    last_rail_cmd_steady_ = last_cmd_vel_steady_;
     RCLCPP_INFO(this->get_logger(),
       "[FAULT RESET COMPLETE] PLC status/standstill confirmed. "
       "Fresh velocity input required before motion.");
@@ -3034,6 +3086,7 @@ private:
     } else if (ads_connected_) {
       std::array<AxisStatus, 3> status{};
       if (read_axis_status(status)) {
+        publish_axis_diagnostics(status);
         process_axis_status(status);
         if (stale_recovery_pending_) process_stale_recovery(status);
         if (reset_rearm_pending_) process_pending_reset(status);
@@ -3055,10 +3108,17 @@ private:
 
     // Command timeout is a NORMAL-OPERATION watchdog. Fault recovery is
     // Reset-only and must not dispatch StopMove through the timeout path.
+    // A command-loss watchdog must use monotonic time, not ROS /clock or wall time.
+    // It still requires a responsive executor; PLC-side protection is mandatory.
+    const auto watchdog_now = std::chrono::steady_clock::now();
     const bool wheel_timeout =
-      !fault_latched_ && (now - last_cmd_vel_time_).seconds() > cmd_vel_timeout_sec_;
+      !fault_latched_ &&
+      std::chrono::duration<double>(watchdog_now - last_cmd_vel_steady_).count()
+        > cmd_vel_timeout_sec_;
     const bool rail_timeout =
-      !fault_latched_ && (now - last_rail_cmd_time_).seconds() > rail_cmd_timeout_sec_;
+      !fault_latched_ &&
+      std::chrono::duration<double>(watchdog_now - last_rail_cmd_steady_).count()
+        > rail_cmd_timeout_sec_;
 
     if (wheel_timeout) {
       target_linear = 0.0;
@@ -3320,6 +3380,41 @@ private:
     }
   }
 
+  // Read-only axis diagnostics for the external monitoring GUI.
+  // Values come directly from PLC AxisStatus. Actual velocity is mm/s -> m/s only.
+  void publish_axis_diagnostics(const std::array<AxisStatus, 3> & axes)
+  {
+    if (!axis_diagnostics_pub_) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (axis_diag_published_ &&
+        std::chrono::duration<double>(now - axis_diag_last_tp_).count() < 0.2) return;
+    axis_diag_published_ = true;
+    axis_diag_last_tp_ = now;
+    std::ostringstream out;
+    out << "{\"axes\":[";
+    for (int axis = 1; axis <= 3; ++axis) {
+      if (axis > 1) out << ',';
+      const auto & a = axes[static_cast<std::size_t>(axis - 1)];
+      const double sign = axis == left_wheel_axis_ ? left_wheel_sign_ :
+        (axis == right_wheel_axis_ ? right_wheel_sign_ : rail_sign_);
+      out << "{\"axis\":" << axis
+          << ",\"velocity_mps\":" << (a.lActVelocity / velocity_scale_ * sign)
+          << ",\"position_mm\":" << a.lActPosition
+          << ",\"ready\":" << (a.bControlLoopClosed ? "true" : "false")
+          << ",\"not_moving\":" << (a.bNotMoving ? "true" : "false")
+          << ",\"has_job\":" << (a.bHasJob ? "true" : "false")
+          << ",\"moving_fw\":" << (a.bMovingFw ? "true" : "false")
+          << ",\"moving_bw\":" << (a.bMovingBw ? "true" : "false")
+          << ",\"error\":" << (a.bError ? "true" : "false")
+          << ",\"error_code\":" << static_cast<uint32_t>(a.nErrorCode)
+          << '}';
+    }
+    out << "]}";
+    std_msgs::msg::String msg;
+    msg.data = out.str();
+    axis_diagnostics_pub_->publish(msg);
+  }
+
   void process_axis_status(const std::array<AxisStatus, 3> & status)
   {
     log_axis_monitor(status);
@@ -3347,6 +3442,18 @@ private:
       fault_latched_ = true;
       fault_stop_active_ = false;
       safe_stop_active_ = false;  // Generic SAFE STOP sends StopMove: disable it.
+      // Even on drive fault, preserve the measured motion in ROS odometry.
+      // This path only runs after a successful finite ReadAxisStatus().
+      const auto & lf = status[static_cast<std::size_t>(left_wheel_axis_ - 1)];
+      const auto & rf = status[static_cast<std::size_t>(right_wheel_axis_ - 1)];
+      const auto & ra = status[static_cast<std::size_t>(rail_axis_ - 1)];
+      actual_left_mps_ = lf.lActVelocity / velocity_scale_ * left_wheel_sign_;
+      actual_right_mps_ = rf.lActVelocity / velocity_scale_ * right_wheel_sign_;
+      actual_rail_mps_ = ra.lActVelocity / velocity_scale_ * rail_sign_;
+      publish_wheel_feedback(actual_left_mps_, actual_right_mps_);
+      publish_rail_feedback(actual_rail_mps_);
+      integrate_and_publish_wheel_odom(actual_left_mps_, actual_right_mps_);
+      publish_joint_states(actual_left_mps_, actual_right_mps_);
       motion_ready_ = false;
       wheel_stop_pending_ = false;
       clear_motion_requests();
@@ -3610,8 +3717,10 @@ private:
       rail_b_not_moving = rail_status.bNotMoving;
     }
 
+    const bool rail_has_job = read_axis_status(status) &&
+      status[static_cast<std::size_t>(rail_axis_ - 1)].bHasJob;
     const bool rail_physically_stopped =
-      rail_b_not_moving &&
+      rail_b_not_moving && !rail_has_job &&
       std::fabs(actual_rail_mps_) <= kStoppedThresholdMps;
     const bool rail_velocity_is_zero =
       std::fabs(actual_rail_mps_) <= stop_suppress_velocity_mps_;
@@ -3645,8 +3754,8 @@ private:
         // No retry loop after BUSY; never StopMove a stationary rail.
         if (rail_physically_stopped) {
           rail_stop_tx_sent_ = true;  // STOP already achieved, wait for state B.
-        } else if (rail_velocity_is_zero) {
-          return;  // bNotMoving may lag; never send STOP at zero speed.
+        } else if (rail_velocity_is_zero && !rail_has_job) {
+          return;  // No outstanding job: avoid blind STOP.
         } else {
           // STOP is a cancellation command, not a subsequent velocity ramp.
           // Never wait on MoveVelocity Busy/Done to accept a necessary STOP.
@@ -3742,9 +3851,8 @@ private:
         return;
       }
 
-      // Stop from non-zero actual velocity only; zero feedback (even if
-      // bNotMoving is late) is NOT a reason to send another StopMove.
-      if (rail_velocity_is_zero) {return;}
+      // A stalled rail may be at zero speed with an active PLC job.
+      if (rail_velocity_is_zero && !rail_has_job) {return;}
       rail_stop_sequence_active_ = true;
       rail_waiting_for_stop_ = true;
       rail_stop_tx_sent_ = false;
@@ -3854,7 +3962,8 @@ private:
       return;  // Missing feedback is not permission to issue an ADS command.
     }
     const auto & feedback = axis_feedback[static_cast<std::size_t>(axis - 1)];
-    const bool plc_stopped = axis_is_physically_stopped(feedback, sign);
+    const bool plc_stopped = axis_is_physically_stopped(feedback, sign) &&
+      !feedback.bHasJob && !feedback.bMovingFw && !feedback.bMovingBw;
     const auto axis_idx = static_cast<std::size_t>(axis);
     if (stop_attempt_initialized_[axis_idx]) {
       if (!plc_stopped || !previous_stop_window_elapsed(axis, ramp_ms)) {
@@ -3905,13 +4014,8 @@ private:
         applied_mps = 0.0;
         return;
       }
-      if (std::fabs(feedback.lActVelocity / velocity_scale_) <=
-          stop_suppress_velocity_mps_) {
-        // PLC says bNotMoving=false; do not issue STOP on nearly zero speed.
-        // Also do not re-arm motion until a proper stationary signal arrives.
-        return;
-      }
-
+      // Never ignore a STOP because a mechanically blocked motor reads zero.
+      // request_axis_stop() verifies HasJob, FB status and one-shot limits.
       const auto stop_result =
         request_axis_stop(axis, ramp_ms, label);
 
@@ -4138,14 +4242,14 @@ private:
 
     last_feedback_time_ = now;
 
-    // Axis feedback is not trustworthy for localization after a drive fault.
-    // Keep the last odom pose and publish zero twist until reset succeeds.
-    const bool freeze_odom = fault_latched_ || safe_stop_latched_;
-    const double linear_mps = freeze_odom ? 0.0 : (left_mps + right_mps) / 2.0;
-    const double angular_rps = freeze_odom ? 0.0 :
-      (right_mps - left_mps) / wheel_separation_m_;
+    // Called only with successful, finite PLC feedback. A motion-inhibit latch
+    // must not falsely report zero velocity while the machine is still coasting.
+    // PLC wheel feedback is not independent ground-truth localization: slip and
+    // invalid encoder data still require fusion/diagnostic handling upstream.
+    const double linear_mps = (left_mps + right_mps) / 2.0;
+    const double angular_rps = (right_mps - left_mps) / wheel_separation_m_;
 
-    if (!freeze_odom && dt > 0.0) {
+    if (dt > 0.0) {
       const double delta_theta = angular_rps * dt;
       const double theta_mid = odom_theta_ + delta_theta / 2.0;
 
@@ -4301,8 +4405,8 @@ private:
   double right_wheel_sign_{1.0};
   double rail_sign_{1.0};
 
-  double wheel_separation_m_{1.0};
-  double wheel_diameter_m_{0.206};
+  double wheel_separation_m_{0.930};
+  double wheel_diameter_m_{0.2032};
   double velocity_scale_{1000.0};
 
   double wheel_ramp_ms_{1000.0};
@@ -4430,6 +4534,8 @@ private:
 
   rclcpp::Time last_cmd_vel_time_;
   rclcpp::Time last_rail_cmd_time_;
+  std::chrono::steady_clock::time_point last_cmd_vel_steady_{};
+  std::chrono::steady_clock::time_point last_rail_cmd_steady_{};
   rclcpp::Time last_feedback_time_;
   rclcpp::Time last_axis_monitor_time_;
   rclcpp::Time last_environment_publish_time_;
@@ -4457,6 +4563,9 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr wheel_odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr axis_diagnostics_pub_;
+  bool axis_diag_published_{false};
+  std::chrono::steady_clock::time_point axis_diag_last_tp_{};
 
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr
     environment_data_pub_;
