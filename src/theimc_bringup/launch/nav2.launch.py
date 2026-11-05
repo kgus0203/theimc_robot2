@@ -3,12 +3,16 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.actions import TimerAction, ExecuteProcess
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+)
+from launch.actions import TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
-from launch_ros.actions import Node, SetRemap
+from launch_ros.actions import Node, SetParameter, SetRemap
 from launch.actions import GroupAction
 
 
@@ -19,6 +23,12 @@ ARGUMENTS = [
         choices=['true', 'false'],
         description='Use simulation (Gazebo) clock if true'
     ),
+    DeclareLaunchArgument(
+        'use_composition',
+        default_value='False',
+        choices=['True', 'False'],
+        description='Run Nav2 nodes in a component container if true'
+    ),
 ]
 
 
@@ -26,6 +36,7 @@ def generate_launch_description():
 
     pkg_share_navigation2 = get_package_share_directory('theimc_navigation2')
     pkg_share_nav2_bringup = get_package_share_directory('nav2_bringup')
+    pkg_share_bringup = get_package_share_directory('theimc_bringup')
 
     # ---------------------------------------------------------
     # Path 설정
@@ -48,6 +59,12 @@ def generate_launch_description():
         'keepout_map.yaml'
     )
 
+    fastdds_profile = os.path.join(
+        pkg_share_bringup,
+        'params',
+        'fastdds_udp_only.xml'
+    )
+
     launch_nav2_bringup = PathJoinSubstitution([
         pkg_share_nav2_bringup,
         'launch',
@@ -58,6 +75,7 @@ def generate_launch_description():
     # Launch Config
     # ---------------------------------------------------------
     use_sim_time = LaunchConfiguration('use_sim_time')
+    use_composition = LaunchConfiguration('use_composition')
 
     # ---------------------------------------------------------
     # Declare Launch Args
@@ -82,14 +100,12 @@ def generate_launch_description():
         executable='map_server',
         name='filter_mask_server',
         output='screen',
-        parameters=[
-            {
-                'use_sim_time': use_sim_time,
-                'yaml_filename': keepout_map_yaml,
-                'topic_name': '/keepout_filter_mask',
-                'frame_id': 'map'
-            }
-        ]
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'yaml_filename': keepout_map_yaml,
+            'topic_name': '/keepout_filter_mask',
+            'frame_id': 'map'
+        }]
     )
 
     # ---------------------------------------------------------
@@ -100,99 +116,52 @@ def generate_launch_description():
         executable='costmap_filter_info_server',
         name='costmap_filter_info_server',
         output='screen',
-        parameters=[
-            {
-                'use_sim_time': use_sim_time,
-                'filter_info_topic': '/costmap_filter_info',
-                'type': 0,
-                'mask_topic': '/keepout_filter_mask',
-                'base': 0.0,
-                'multiplier': 1.0
-            }
-        ]
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'filter_info_topic': '/costmap_filter_info',
+            'type': 0,
+            'mask_topic': '/keepout_filter_mask',
+            'base': 0.0,
+            'multiplier': 1.0
+        }]
     )
 
-    # ---------------------------------------------------------
-    # Keepout lifecycle 직접 처리
-    #
-    # 노드가 ROS graph에 보일 때까지 기다린 다음
-    # unconfigured -> configure
-    # inactive -> activate
-    # 순서로 처리
-    # ---------------------------------------------------------
-    bringup_keepout_filters_cmd = ExecuteProcess(
-        cmd=[
-            'bash',
-            '-lc',
-            '''
-            echo "[KEEP_OUT] Waiting for /filter_mask_server..."
-            until ros2 node list | grep -qx "/filter_mask_server"; do
-              sleep 0.5
-            done
-
-            echo "[KEEP_OUT] Waiting for /costmap_filter_info_server..."
-            until ros2 node list | grep -qx "/costmap_filter_info_server"; do
-              sleep 0.5
-            done
-
-            echo "[KEEP_OUT] Configure /filter_mask_server if needed..."
-            STATE=$(ros2 lifecycle get /filter_mask_server 2>/dev/null | awk '{print $1}')
-            echo "[KEEP_OUT] /filter_mask_server state: $STATE"
-            if [ "$STATE" = "unconfigured" ]; then
-              ros2 lifecycle set /filter_mask_server configure
-              sleep 1.0
-            fi
-
-            echo "[KEEP_OUT] Activate /filter_mask_server if needed..."
-            STATE=$(ros2 lifecycle get /filter_mask_server 2>/dev/null | awk '{print $1}')
-            echo "[KEEP_OUT] /filter_mask_server state: $STATE"
-            if [ "$STATE" = "inactive" ]; then
-              ros2 lifecycle set /filter_mask_server activate
-              sleep 1.0
-            fi
-
-            echo "[KEEP_OUT] Configure /costmap_filter_info_server if needed..."
-            STATE=$(ros2 lifecycle get /costmap_filter_info_server 2>/dev/null | awk '{print $1}')
-            echo "[KEEP_OUT] /costmap_filter_info_server state: $STATE"
-            if [ "$STATE" = "unconfigured" ]; then
-              ros2 lifecycle set /costmap_filter_info_server configure
-              sleep 1.0
-            fi
-
-            echo "[KEEP_OUT] Activate /costmap_filter_info_server if needed..."
-            STATE=$(ros2 lifecycle get /costmap_filter_info_server 2>/dev/null | awk '{print $1}')
-            echo "[KEEP_OUT] /costmap_filter_info_server state: $STATE"
-            if [ "$STATE" = "inactive" ]; then
-              ros2 lifecycle set /costmap_filter_info_server activate
-              sleep 1.0
-            fi
-
-            echo "[KEEP_OUT] Final states:"
-            ros2 lifecycle get /filter_mask_server
-            ros2 lifecycle get /costmap_filter_info_server
-            '''
-        ],
-        output='screen'
+    lifecycle_manager_keepout = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_keepout',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'autostart': True,
+            'bond_timeout': 15.0,
+            'bond_respawn_max_duration': 30.0,
+            'node_names': [
+                'filter_mask_server',
+                'costmap_filter_info_server',
+            ],
+        }]
     )
 
     # ---------------------------------------------------------
     # Nav2 Bringup
     #
-    # 여기서는 LaunchConfiguration('map')을 쓰지 않고
-    # params_nav2_map을 직접 넘겨서
-    # launch configuration 'map' does not exist 에러를 피함
+    # 선언된 map / params_file 인자를 그대로 Nav2 bringup에 전달
     # ---------------------------------------------------------
     nav2_bringup_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([launch_nav2_bringup]),
         launch_arguments={
             'use_sim_time': use_sim_time,
-            'map': params_nav2_map,
-            'params_file': params_nav2,
-            'autostart': 'true'
+            'map': LaunchConfiguration('map'),
+            'params_file': LaunchConfiguration('params_file'),
+            'autostart': 'true',
+            'use_composition': use_composition,
         }.items()
     )
     nav2_remapping_group = GroupAction(
         actions=[
+            SetParameter(name='bond_timeout', value=15.0),
+            SetParameter(name='bond_respawn_max_duration', value=30.0),
             SetRemap(src='/cmd_vel', dst='/cmd_vel_nav'),
             SetRemap(src='cmd_vel', dst='/cmd_vel_nav'),
             nav2_bringup_launch
@@ -225,30 +194,25 @@ def generate_launch_description():
     # ---------------------------------------------------------
     ld = LaunchDescription(ARGUMENTS)
 
+    # FastDDS shared-memory port files can remain corrupted after forced exits.
+    # Use UDP for this launch so Nav2 communication does not depend on SHM locks.
+    ld.add_action(SetEnvironmentVariable(
+        name='FASTRTPS_DEFAULT_PROFILES_FILE',
+        value=fastdds_profile,
+    ))
+
     ld.add_action(dla_map_yaml_cmd)
     ld.add_action(dla_params_nav2_cmd)
 
-    # 1. Keepout filter 서버 실행
-    ld.add_action(filter_mask_server_cmd)
-    ld.add_action(costmap_filter_info_server_cmd)
+    # Keepout 임시 비활성화
+    # ld.add_action(filter_mask_server_cmd)
+    # ld.add_action(costmap_filter_info_server_cmd)
+    # ld.add_action(lifecycle_manager_keepout)
 
-    # 2. 노드 뜨는 것 기다렸다가 configure/activate
-    ld.add_action(
-        TimerAction(
-            period=2.0,
-            actions=[bringup_keepout_filters_cmd]
-        )
-    )
+    # Keepout 토픽을 기다릴 필요가 없으므로 Nav2를 바로 실행한다.
+    ld.add_action(nav2_remapping_group)
 
-    # 3. Keepout 서버가 active 된 뒤 Nav2 실행
-    ld.add_action(
-        TimerAction(
-            period=10.0,
-            actions=[nav2_remapping_group]
-        )
-    )
-    
-    # 4. Nav2/AMCL 실행 후 last pose manager 실행
+    # Nav2/AMCL 실행 후 last pose manager 실행
     ld.add_action(
         TimerAction(
             period=15.0,

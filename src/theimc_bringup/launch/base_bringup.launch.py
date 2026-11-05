@@ -18,7 +18,11 @@ import os
 import xml.etree.ElementTree as ET
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -59,6 +63,11 @@ def generate_launch_description():
     )
     params_twist_mux = PathJoinSubstitution(
         [pkg_share_bringup, 'params', 'twist_mux_params.yaml']
+    )
+    fastdds_profile = os.path.join(
+        pkg_share_bringup,
+        'params',
+        'fastdds_udp_only.xml',
     )
 
     urdf_file = os.path.join(
@@ -102,6 +111,9 @@ def generate_launch_description():
         executable='bringup_node',
         name='bringup_node',
         output='screen',
+        # Do not reset Beckhoff faults automatically on ROS launch.
+        # Inspect the alarm and recover explicitly using /agv/reset_faults.
+        parameters=[{'auto_reset_faults_on_start': False}],
     )
 
     # LiDAR raw scan: /scan_raw
@@ -255,7 +267,11 @@ def generate_launch_description():
                 'startup_power_transition_timeout_sec': 5.0,
                 'allow_simultaneous_drive': False,
                 'auto_reset_axis_fault': False,  # operator-initiated reset only
-                'log_axis_monitor': True,
+                # Vendor policy: on StopMove failure, request PowerDisable once and latch motion.
+                # Verify coast/brake behavior under site safety controls before using on hardware.
+                'disable_on_stop_failure': True,
+                'require_power_restore_approval': True,  # Reset does not automatically PowerEnable
+                'log_axis_monitor': False,
                 'axis_monitor_period_sec': 0.5,
                 'diagnostic_ads_poll_period_sec': 0.5,
                 'ads_slow_read_warn_ms': 100.0,
@@ -365,6 +381,11 @@ def generate_launch_description():
     )
 
     launch_description = LaunchDescription(ARGUMENTS)
+    # Avoid stale FastDDS shared-memory locks after forced ROS process exits.
+    launch_description.add_action(SetEnvironmentVariable(
+        name='FASTRTPS_DEFAULT_PROFILES_FILE',
+        value=fastdds_profile,
+    ))
     launch_description.add_action(robot_state_publisher_cmd)
     launch_description.add_action(twist_mux_cmd)
     launch_description.add_action(motor_drive_cmd)

@@ -16,6 +16,12 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
 
+  <!-- Navigation launch-time dependencies. -->
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>theimc_navigation2</exec_depend>
+
   <!-- D435 RGB-D mapping and localization. -->
   <exec_depend>realsense2_camera</exec_depend>
   <exec_depend>rtabmap_sync</exec_depend>

@@ -10,6 +10,7 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import BatteryState, Imu, LaserScan
 from std_msgs.msg import Bool, Float32, Float32MultiArray, String, UInt32
+from std_srvs.srv import Trigger
 
 
 def quaternion_from_euler(roll, pitch, yaw):
@@ -66,7 +67,7 @@ class BringUp(Node):
         self.declare_parameter('serial_timeout', 0.1)
 
         self.declare_parameter('rail_forward_speed', 0.2)
-        self.declare_parameter('rail_back_speed', 0.2)
+        self.declare_parameter('rail_back_speed', 0.5)
         self.declare_parameter('rail_command_rate_hz', 10.0)
 
         # Direction reversal interlock:
@@ -79,6 +80,8 @@ class BringUp(Node):
 
         self.declare_parameter('rail_obstacle_distance', 0.5)
         self.declare_parameter('rail_obstacle_fov_deg', 45.0)
+        self.declare_parameter('auto_reset_faults_on_start', False)
+        self.declare_parameter('auto_reset_faults_delay_sec', 2.0)
 
         self.serial_port = str(self.get_parameter('serial_port').value)
         self.baud_rate = int(self.get_parameter('baud_rate').value)
@@ -115,6 +118,13 @@ class BringUp(Node):
         self.rail_obstacle_fov_deg = float(
             self.get_parameter('rail_obstacle_fov_deg').value
         )
+        self.auto_reset_faults_on_start = bool(
+            self.get_parameter('auto_reset_faults_on_start').value
+        )
+        self.auto_reset_faults_delay_sec = max(
+            0.5,
+            float(self.get_parameter('auto_reset_faults_delay_sec').value),
+        )
 
         # ------------------------------------------------------------
         # STM32 serial: sensors only
@@ -141,6 +151,9 @@ class BringUp(Node):
         # ------------------------------------------------------------
         self.rail_state = 'OUT_RAIL'
 
+        # STM32 TOF observation is independent of the operational /rail_state.
+        self.tof_rail_state = 'UNKNOWN'
+
         # Command requested by BT/operator.  This value is preserved while
         # temporarily blocked by an obstacle so motion can resume automatically
         # after the obstacle clears.
@@ -156,6 +169,7 @@ class BringUp(Node):
         # A reverse command is held here until ADS feedback confirms
         # that the rail motor has actually stopped.
         self.pending_reverse_command = None
+        self.reverse_standstill_samples = 0
         self.last_measured_rail_velocity = 0.0
         self.variable_rail_speed_mode = False
         self.variable_rail_speed_setpoint = 0.0
@@ -228,6 +242,13 @@ class BringUp(Node):
             qos_profile,
         )
 
+        # A driver latch clears stored rail targets so Reset cannot restart
+        # a command that was issued BEFORE the fault.
+        self.agv_motion_inhibited = False
+        self.sub_agv_status = self.create_subscription(
+            String, '/agv_status', self.cb_agv_status, qos_profile,
+        )
+
         # WPT charger command from ROS -> STM32 -> CAN2.0A charger
         # Accepted strings: ON, OFF, RESET
         self.sub_charger_command = self.create_subscription(
@@ -255,6 +276,14 @@ class BringUp(Node):
         self.pub_tof = self.create_publisher(
             Float32,
             '/tof_distance',
+            qos_profile,
+        )
+
+        # Sensor-derived position only; never feed this directly into the
+        # operational rail state machine or motor permissions.
+        self.pub_tof_rail_state = self.create_publisher(
+            String,
+            '/rail/tof_state',
             qos_profile,
         )
 
@@ -408,6 +437,16 @@ class BringUp(Node):
         )
 
         # ------------------------------------------------------------
+        # AGV fault reset service client
+        # ------------------------------------------------------------
+        self.reset_faults_client = self.create_client(
+            Trigger,
+            '/agv/reset_faults',
+        )
+        self.auto_reset_faults_attempted = False
+        self.auto_reset_faults_timer = None
+
+        # ------------------------------------------------------------
         # Timers
         # ------------------------------------------------------------
         # STM sensor receive loop: 20 Hz
@@ -419,6 +458,12 @@ class BringUp(Node):
             self.publish_rail_command_heartbeat,
         )
 
+        if self.auto_reset_faults_on_start:
+            self.auto_reset_faults_timer = self.create_timer(
+                self.auto_reset_faults_delay_sec,
+                self._auto_reset_faults_once,
+            )
+
         # Initial state
         self.publish_rail_end_reached(False)
         self._set_effective_rail_command('STOP', log=False)
@@ -426,11 +471,78 @@ class BringUp(Node):
 
         self.get_logger().info(
             'BringUp initialized: '
-            'STM32=[IMU, TOF, BMS, WPT], '
+            'STM32=[IMU, TOF, RAIL_STATE, BMS, WPT], '
             '/charger/command->[STM UART]->WPT CAN2.0A, '
             '/cmd_vel->agv_ads_driver, '
             '/rail_command->/rail/cmd_speed->agv_ads_driver'
         )
+
+    def cb_agv_status(self, msg):
+        state = msg.data.upper()
+        inhibited = any(token in state for token in (
+            'SAFE STOP LATCHED', 'AXIS FAULT LATCHED',
+            'RESET REQUESTED', 'MOTION NOT READY', 'ADS DISCONNECTED',
+        ))
+        if inhibited and not self.agv_motion_inhibited:
+            self.agv_motion_inhibited = True
+            self.pending_reverse_command = None
+            self.reverse_standstill_samples = 0
+            self.variable_rail_speed_mode = False
+            self.variable_rail_speed_setpoint = 0.0
+            self.requested_rail_command = 'STOP'
+            self.last_rail_motion_direction = 'STOP'
+            self._set_effective_rail_speed(0.0, reason='AGV driver fault / not ready')
+            self.get_logger().warning(
+                '[AGV INTERLOCK] Previous rail motion request discarded; '
+                'a fresh command is required after recovery.')
+        elif not inhibited and self.agv_motion_inhibited and 'READY' in state:
+            self.agv_motion_inhibited = False
+            self.get_logger().info('[AGV INTERLOCK] READY; waiting for NEW operator command.')
+
+    def _auto_reset_faults_once(self):
+        if self.auto_reset_faults_attempted:
+            if self.auto_reset_faults_timer is not None:
+                self.auto_reset_faults_timer.cancel()
+            return
+
+        self.auto_reset_faults_attempted = True
+
+        if self.auto_reset_faults_timer is not None:
+            self.auto_reset_faults_timer.cancel()
+
+        if not self.reset_faults_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warning(
+                '[AUTO RESET] /agv/reset_faults service unavailable at startup.'
+            )
+            return
+
+        self.get_logger().info(
+            '[AUTO RESET] Calling /agv/reset_faults after bringup startup.'
+        )
+
+        request = Trigger.Request()
+        future = self.reset_faults_client.call_async(request)
+        future.add_done_callback(self._auto_reset_faults_done)
+
+    def _auto_reset_faults_done(self, future):
+        try:
+            response = future.result()
+            if response is None:
+                self.get_logger().warning(
+                    '[AUTO RESET] Empty response from /agv/reset_faults.'
+                )
+            elif response.success:
+                self.get_logger().info(
+                    f'[AUTO RESET] Fault reset successful: {response.message}'
+                )
+            else:
+                self.get_logger().warning(
+                    f'[AUTO RESET] Fault reset failed: {response.message}'
+                )
+        except Exception as error:
+            self.get_logger().error(
+                f'[AUTO RESET] Service call error: {error}'
+            )
 
     # ============================================================
     # WPT charger command: ROS -> STM32 USART3 -> CAN2.0A
@@ -475,6 +587,9 @@ class BringUp(Node):
     # ============================================================
     def cb_rail_cmd_msg(self, msg):
         command = msg.data.strip().upper()
+        if self.agv_motion_inhibited and command != 'STOP':
+            self.get_logger().warning('[AGV INTERLOCK] Rail command denied until driver READY.')
+            return
         self.variable_rail_speed_mode = False
         self.variable_rail_speed_setpoint = 0.0
 
@@ -496,6 +611,13 @@ class BringUp(Node):
             return
 
         self.requested_rail_command = command
+        if self.pending_reverse_command is not None:
+            # Keep STOP asserted while the earlier reverse is being resolved.
+            # Updating the requested direction must not bypass that interlock.
+            self.pending_reverse_command = command
+            self.reverse_standstill_samples = 0
+            self._set_effective_rail_speed(0.0, reason='rail reverse pending')
+            return
 
         # Determine the direction in which the rail is physically moving.
         measured_direction = 'STOP'
@@ -531,6 +653,7 @@ class BringUp(Node):
             current_direction != command
         ):
             self.pending_reverse_command = command
+            self.reverse_standstill_samples = 0
             self.get_logger().info(
                 f'[RAIL REVERSE] {current_direction} -> {command}: '
                 f'STOP first, waiting for speed <= '
@@ -548,20 +671,15 @@ class BringUp(Node):
 
     def cb_rail_speed_setpoint(self, msg):
         speed = float(msg.data)
+        if self.agv_motion_inhibited and abs(speed) > 1.0e-6:
+            self.get_logger().warning('[AGV INTERLOCK] Rail speed denied until driver READY.')
+            return
 
         if not math.isfinite(speed):
             self.get_logger().warning(
                 f'Invalid rail speed setpoint: {speed}'
             )
             return
-
-        speed = max(
-            -self.rail_back_speed if self.rail_back_speed > 0.0 else -0.5,
-            min(
-                self.rail_forward_speed if self.rail_forward_speed > 0.0 else 0.5,
-                speed,
-            ),
-        )
 
         # Allow teleop step control up to +/-0.5 m/s independently of
         # the fixed FORWARD/BACK parameter values.
@@ -581,6 +699,11 @@ class BringUp(Node):
 
         command = 'FORWARD' if speed > 0.0 else 'BACK'
         self.requested_rail_command = command
+        if self.pending_reverse_command is not None:
+            self.pending_reverse_command = command
+            self.reverse_standstill_samples = 0
+            self._set_effective_rail_speed(0.0, reason='variable rail reverse pending')
+            return
 
         # Respect the same direction-reversal safety rule.
         current_direction = 'STOP'
@@ -593,6 +716,7 @@ class BringUp(Node):
 
         if current_direction in ('FORWARD', 'BACK') and current_direction != command:
             self.pending_reverse_command = command
+            self.reverse_standstill_samples = 0
             self._set_effective_rail_speed(
                 0.0,
                 reason=f'reverse interlock before {command}',
@@ -978,13 +1102,19 @@ class BringUp(Node):
 
         # Complete a pending direction reversal only after the actual
         # ADS feedback confirms that the rail motor has stopped.
+        if self.pending_reverse_command is not None:
+            if abs(measured_velocity) <= self.rail_reverse_stop_threshold_mps:
+                self.reverse_standstill_samples += 1
+            else:
+                self.reverse_standstill_samples = 0
+
         if (
             self.pending_reverse_command is not None and
-            abs(measured_velocity) <=
-            self.rail_reverse_stop_threshold_mps
+            self.reverse_standstill_samples >= 3
         ):
             reverse_command = self.pending_reverse_command
             self.pending_reverse_command = None
+            self.reverse_standstill_samples = 0
             self.last_rail_motion_direction = reverse_command
 
             self.get_logger().info(
@@ -993,9 +1123,11 @@ class BringUp(Node):
                 f'{reverse_command}'
             )
 
-            self._reevaluate_rail_command(
-                reason='STOP confirmed before direction reversal'
-            )
+            if not self.variable_rail_speed_mode:
+                self._reevaluate_rail_command(
+                    reason='STOP confirmed before direction reversal'
+                )
+            # Variable setpoints are handled by the variable-speed branch below.
 
         speed_msg = Float32MultiArray()
         speed_msg.data = values
@@ -1041,7 +1173,10 @@ class BringUp(Node):
         # A rail-end / obstacle update may block or resume motion.
         # In variable-speed mode, preserve the exact signed speed requested
         # by t/b/g instead of remapping BACK/FORWARD to the fixed 0.2 m/s.
-        if self.variable_rail_speed_mode:
+        if self.pending_reverse_command is not None:
+            # Do not let variable-speed feedback handling bypass reverse STOP.
+            self._set_effective_rail_speed(0.0, reason='reverse STOP pending')
+        elif self.variable_rail_speed_mode:
             variable_speed = self.variable_rail_speed_setpoint
 
             if abs(variable_speed) < 1.0e-6:
@@ -1176,6 +1311,7 @@ class BringUp(Node):
         try:
             latest_imu_line = None
             latest_tof_line = None
+            latest_tof_rail_state_line = None
             latest_bms_line = None
             latest_wpt_line = None
             latest_wpt_cmd_line = None
@@ -1200,6 +1336,8 @@ class BringUp(Node):
                     latest_imu_line = line
                 elif line.startswith('TOF'):
                     latest_tof_line = line
+                elif line.startswith('RAIL_STATE,'):
+                    latest_tof_rail_state_line = line
                 elif line.startswith('BMS'):
                     latest_bms_line = line
                 elif line.startswith('WPTCMD'):
@@ -1229,6 +1367,11 @@ class BringUp(Node):
             if latest_tof_line is not None:
                 self.publish_tof_from_line(
                     latest_tof_line
+                )
+
+            if latest_tof_rail_state_line is not None:
+                self.publish_tof_rail_state_from_line(
+                    latest_tof_rail_state_line
                 )
 
             if latest_bms_line is not None:
@@ -1460,6 +1603,31 @@ class BringUp(Node):
         ack_msg.data = f'{ack_name}:{ack_result_name}'
         self.pub_charger_ack.publish(ack_msg)
 
+    def publish_tof_rail_state_from_line(self, line):
+        """STM32: RAIL_STATE,ON_RAIL,TOF=290 -> /rail/tof_state.
+
+        This is a *sensor observation*, not an operational /rail_state command.
+        """
+        fields = line.split(',')
+        if len(fields) < 2 or fields[0] != 'RAIL_STATE':
+            return
+
+        observed_state = fields[1].strip().upper()
+        valid_states = {'ON_RAIL', 'OUT_RAIL', 'ENTERING', 'EXITING', 'UNKNOWN'}
+        if observed_state not in valid_states:
+            self.get_logger().warning(f'[STM RAIL_STATE] Invalid: {line}')
+            return
+
+        if observed_state != self.tof_rail_state:
+            self.get_logger().info(
+                f'[STM TOF RAIL] {self.tof_rail_state} -> {observed_state}'
+            )
+            self.tof_rail_state = observed_state
+
+        msg = String()
+        msg.data = observed_state
+        self.pub_tof_rail_state.publish(msg)
+
     def publish_tof_from_line(self, tof_line):
         try:
             # STM32 format: "TOF: 176.00 mm"
@@ -1535,18 +1703,33 @@ class BringUp(Node):
     # Shutdown
     # ============================================================
     def shutdown_safely(self):
-        # Stop the rail through ROS -> agv_ads_driver.
+        """Best-effort ROS STOP on shutdown; AGV driver owns PLC STOP/PowerDisable.
+
+        A ROS SIGINT may already have invalidated the publisher context.
+        In that case do not raise an exception or claim the STOP was delivered.
+        """
         self.pending_reverse_command = None
         self.requested_rail_command = 'STOP'
-        self._set_effective_rail_command(
-            'STOP',
-            reason='bringup shutdown',
-        )
-
-        # Send a few STOP heartbeats before this node disappears.
-        for _ in range(3):
-            self.publish_rail_command_heartbeat()
-
+        self.effective_rail_command = 'STOP'
+        self.effective_rail_speed = 0.0
+        self.variable_rail_speed_mode = False
+        self.variable_rail_speed_setpoint = 0.0
+        if rclpy.ok(context=self.context):
+            for _ in range(3):
+                try:
+                    self._publish_rail_speed_command(0.0)
+                except Exception as error:
+                    self.get_logger().warning(
+                        f'[SHUTDOWN] Rail ROS STOP could not be published: {error}'
+                    )
+                    break
+        else:
+            # Normal with rclpy default SIGINT handler. The C++ AGV driver
+            # must perform PLC-side shutdown independently of ROS publishing.
+            self.get_logger().warning(
+                '[SHUTDOWN] ROS context already invalid; PLC STOP/PowerDisable '
+                'is handled by agv_ads_driver; not claiming a ROS STOP was sent.'
+            )
         try:
             if self.stm_serial.is_open:
                 self.stm_serial.close()

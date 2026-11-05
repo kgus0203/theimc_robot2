@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import os
+import json
+import subprocess
 import select
 import shutil
 import sys
@@ -35,6 +37,8 @@ RAIL_SPEED_SETPOINT_TOPIC = '/rail_speed_setpoint'
 RAIL_STATE_TOPIC = '/rail_state'
 CHARGER_COMMAND_TOPIC = '/charger/command'
 RESET_FAULTS_SERVICE = '/agv/reset_faults'
+# Independent, already-built Beckhoff TwinCAT maintenance executable.
+TWINCAT_TOOL = os.environ.get('TWINCAT_TOOL', os.path.expanduser('~/AGVSource/Beckhoff/build/ads_app'))
 WHEEL_POWER_SERVICE = '/agv/wheel_power'
 RAIL_POWER_SERVICE = '/agv/rail_power'
 
@@ -138,6 +142,7 @@ def show_help():
         "  • Y / Z : 레일 모터 ON / OFF",
         "  • O / P : 충전기 ON / OFF",
         "  • R     : AGV 에러 리셋",
+        "  • V     : TwinCAT 상태 조회 / 수동 재시작 메뉴",
     ]
     individual = [
         "🔗 바퀴·레일 독립 제어",
@@ -167,6 +172,7 @@ def show_help():
         " [?] 단축키 다시 보기  |  [Ctrl+C] 종료",
         " [참고] 바퀴+레일 동시 구동은 AGV의 allow_simultaneous_drive=true 및 두 모터 Power ON 필요",
         " [R] 리셋 직전 STOP 미발행 (PLC 오류 시 정지 동작은 별도 보장 필요)",
+        " [V] 재시작은 3축 Power OFF + NC 정지/Job 해제 + 현장 확인 후에만 가능",
         "=" * rule_width,
         "",
     ])
@@ -283,6 +289,114 @@ def call_set_bool_service(node, client, service_name, enabled):
         print(f"\n[POWER][ERROR] {service_name} call failed: {exc}")
 
 
+
+
+def _run_twincat_tool(*args, timeout=12):
+    """Call only the known local executable; never use shell=True."""
+    tool = os.path.realpath(os.path.expanduser(TWINCAT_TOOL))
+    if not os.path.isfile(tool) or not os.access(tool, os.X_OK):
+        print(f"\n[TWINCAT][ERROR] 실행 파일 없음/실행 불가: {tool}")
+        return None
+    try:
+        result = subprocess.run([tool, *args], capture_output=True,
+                                text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        print(f"\n[TWINCAT][ERROR] 시간 초과 ({timeout}s). PLC 상태를 별도 확인하세요.")
+        return None
+    except OSError as exc:
+        print(f"\n[TWINCAT][ERROR] 실행 실패: {exc}")
+        return None
+    if result.stdout:
+        print(result.stdout.rstrip())
+    if result.stderr:
+        print(result.stderr.rstrip())
+    print(f"[TWINCAT] 종료 코드: {result.returncode}")
+    return result.returncode
+
+
+def _axes_safe_for_restart(last_axis_snapshot):
+    """Fail closed. Require a recent full 3-axis *PLC* snapshot, all powered OFF."""
+    if not last_axis_snapshot or time.monotonic() - last_axis_snapshot['time'] > 2.0:
+        return False, '최신 PLC 축 진단이 없습니다(2초 이내 데이터 필요).'
+    axes = last_axis_snapshot['axes']
+    if len(axes) != 3 or {a.get('axis') for a in axes} != {1, 2, 3}:
+        return False, 'Axis1/2/3 상태가 모두 유효하지 않습니다.'
+    for a in axes:
+        axis = a['axis']
+        velocity = a.get('velocity_mps')
+        if not isinstance(velocity, (float, int)) or not (-0.001 <= velocity <= 0.001):
+            return False, f'Axis{axis} 측정 속도가 0이 아니거나 불명확합니다.'
+        if a.get('ready') is not False:
+            return False, f'Axis{axis} Power가 OFF로 확인되지 않았습니다.'
+        if a.get('not_moving') is not True or a.get('has_job') is not False:
+            return False, f'Axis{axis} NC 정지/Job 해제가 확인되지 않았습니다.'
+        if a.get('moving_fw') is not False or a.get('moving_bw') is not False:
+            return False, f'Axis{axis} 방향 플래그가 정지 상태가 아닙니다.'
+        if a.get('error') is not False:
+            return False, f'Axis{axis} Error가 남아 있습니다.'
+    return True, 'Axis1/2/3 전원 OFF, NC 정지, Job 없음 확인'
+
+
+def _refresh_axis_snapshot(node, snapshot_ref, duration=1.2):
+    started = time.monotonic()
+    deadline = started + duration
+    while rclpy.ok() and time.monotonic() < deadline:
+        rclpy.spin_once(node, timeout_sec=0.05)
+        snapshot = snapshot_ref.get('data')
+        if snapshot and snapshot['time'] > started:
+            return _axes_safe_for_restart(snapshot)
+    return False, '새 PLC 축 진단 메시지를 수신하지 못했습니다.'
+
+
+def twincat_maintenance_menu(node, snapshot_ref, pub_wheel,
+                             pub_rail_command, pub_rail_speed_setpoint):
+    """Operator-driven maintenance, never an automatic recovery or E-stop."""
+    print('\n' + '=' * 58)
+    print('Beckhoff TwinCAT 관리 (V)')
+    print('1: 상태 조회   2: 재시작 요청   0: 취소')
+    print('=' * 58)
+    choice = input('선택: ').strip()
+    if choice == '0' or not choice:
+        return
+    if choice == '1':
+        _run_twincat_tool('state', timeout=12)
+        return
+    if choice != '2':
+        print('[TWINCAT] 잘못된 선택')
+        return
+
+    # Publishing a zero command is NOT proof of physical stop. The PLC must
+    # independently report every axis disabled, idle and free of NC jobs.
+    publish_wheel_stop(pub_wheel)
+    publish_rail_command(pub_rail_command, 'STOP')
+    publish_rail_speed_setpoint(pub_rail_speed_setpoint, 0.0)
+    ok, reason = _refresh_axis_snapshot(node, snapshot_ref)
+    if not ok:
+        print(f'[TWINCAT][BLOCKED] {reason}')
+        print('현장에서 안전정지 및 구동축 OFF 후 다시 확인하세요.')
+        return
+    print(f'[TWINCAT] PLC 축 진단: {reason}')
+    print('주의: PLC 진단만으로 물리적 안전을 보장하지 않습니다.')
+    print('현장 담당자가 로봇 고정, 비상정지 및 주변 안전을 확인해야 합니다.')
+    if input('현장 확인 후 정확히 SAFE 입력: ').strip() != 'SAFE':
+        print('[TWINCAT] 승인 취소')
+        return
+    if input('재시작하려면 정확히 RESTART 입력: ').strip() != 'RESTART':
+        print('[TWINCAT] 승인 취소')
+        return
+    ok, reason = _refresh_axis_snapshot(node, snapshot_ref)
+    if not ok:
+        print(f'[TWINCAT][BLOCKED] 재확인 실패: {reason}')
+        return
+    print('[TWINCAT] 원격 재시작 명령 실행 (기존 ADS 세션은 무효화됩니다).')
+    rc = _run_twincat_tool('restart', '--confirmed', timeout=90)
+    if rc == 0:
+        print('[TWINCAT] 런타임 RUN 복귀. AGV ADS 재연결 및 수동 복구 승인 전까지 주행 금지.')
+        print('V4 드라이버의 /agv/approve_ads_recovery는 별도 현장 확인 후 실행하세요.')
+    else:
+        print('[TWINCAT][WARNING] 재시작 완료 확인 실패. PLC 상태/드라이브를 점검하세요.')
+
+
 def main():
     settings = None
     if os.name != 'nt':
@@ -304,6 +418,36 @@ def main():
 
     # WPT charger ON/OFF command.
     pub_charger = node.create_publisher(String, CHARGER_COMMAND_TOPIC, qos)
+
+    # Driver status is used to revoke any stale 10Hz wheel heartbeat after a fault.
+    agv_status = {'inhibited': False, 'clear_pending': False}
+
+    def on_agv_status(msg):
+        state = msg.data.upper()
+        inhibited = any(token in state for token in (
+            'SAFE STOP LATCHED', 'AXIS FAULT LATCHED',
+            'RESET REQUESTED', 'MOTION NOT READY', 'ADS DISCONNECTED',
+        ))
+        if inhibited and not agv_status['inhibited']:
+            agv_status['clear_pending'] = True
+        agv_status['inhibited'] = inhibited
+
+    node.create_subscription(String, '/agv_status', on_agv_status, qos)
+
+    # Capture fresh PLC axis status for manual TwinCAT restart gating.
+    axis_snapshot_ref = {'data': None}
+
+    def on_axis_diagnostics(msg):
+        try:
+            value = json.loads(msg.data)
+            axes = value.get('axes')
+            if isinstance(axes, list):
+                axis_snapshot_ref['data'] = {'time': time.monotonic(), 'axes': axes}
+        except (ValueError, TypeError, AttributeError):
+            axis_snapshot_ref['data'] = None
+
+    node.create_subscription(String, '/agv/axis_diagnostics', on_axis_diagnostics, qos)
+
 
     # AGV fault reset service.
     reset_faults_client = node.create_client(Trigger, RESET_FAULTS_SERVICE)
@@ -331,7 +475,26 @@ def main():
 
     try:
         while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.0)
+            if agv_status['clear_pending']:
+                agv_status['clear_pending'] = False
+                wheel_teleop_claimed = True
+                target_linear_velocity = 0.0
+                target_angular_velocity = 0.0
+                target_rail_velocity = 0.0
+                control_linear_velocity = 0.0
+                control_angular_velocity = 0.0
+                publish_wheel_stop(pub_wheel)
+                publish_rail_command(pub_rail_command, 'STOP')
+                publish_rail_speed_setpoint(pub_rail_speed_setpoint, 0.0)
+                print('\n[AGV FAULT] Previous teleop targets CLEARED; fresh input required after READY.')
             key = get_key(settings)
+            # Accept Caps Lock / uppercase keys without changing Ctrl+C or space.
+            if len(key) == 1:
+                key = key.lower()
+            if agv_status['inhibited'] and key in ('w','x','a','d','t','b','1','2'):
+                print('\n[AGV INTERLOCK] Movement denied until AGV READY.')
+                key = ''
 
             # '?' only reprints the key guide; it does not send a motion command.
             if key == '?':
@@ -533,6 +696,25 @@ def main():
                     target_rail_velocity
                 )
 
+            # ---------------- TwinCAT maintenance (existing keys preserved) ----------------
+            elif key == 'v':
+                # Stop all local desired velocities before opening the modal menu.
+                wheel_teleop_claimed = True
+                target_linear_velocity = 0.0
+                target_angular_velocity = 0.0
+                target_rail_velocity = 0.0
+                control_linear_velocity = 0.0
+                control_angular_velocity = 0.0
+                publish_wheel_stop(pub_wheel)
+                publish_rail_command(pub_rail_command, 'STOP')
+                publish_rail_speed_setpoint(pub_rail_speed_setpoint, 0.0)
+                twincat_maintenance_menu(node, axis_snapshot_ref, pub_wheel,
+                                         pub_rail_command, pub_rail_speed_setpoint)
+                # Never restore pre-maintenance velocities. The normal 10Hz zero
+                # heartbeat resumes after the menu closes.
+                last_wheel_publish_mono = 0.0
+                print_vels(0.0, 0.0, 0.0)
+
             # ---------------- WPT charger control ----------------
             elif key in ('o', 'p'):
                 # Charger command does not change wheel/rail teleop mode.
@@ -561,12 +743,21 @@ def main():
         print(f'\nTeleop error: {exc}')
 
     finally:
-        try:
-            publish_wheel_stop(pub_wheel)
-            publish_rail_command(pub_rail_command, 'STOP')
-            publish_rail_speed_setpoint(pub_rail_speed_setpoint, 0.0)
-        except Exception:
-            pass
+        # Teleop releases its velocity request, but must NOT unilaterally
+        # PowerDisable axes shared with Nav2/BT. PLC shutdown belongs to
+        # agv_ads_driver when the full bringup is stopped.
+        if rclpy.ok():
+            try:
+                for _ in range(3):
+                    publish_wheel_stop(pub_wheel)
+                    publish_rail_command(pub_rail_command, 'STOP')
+                    publish_rail_speed_setpoint(pub_rail_speed_setpoint, 0.0)
+                    time.sleep(0.05)
+            except Exception as exc:
+                print(f'\n[TELEOP EXIT] STOP publish failed: {exc}')
+        else:
+            print('\n[TELEOP EXIT] ROS context invalid; STOP publish unavailable. '
+                  'Confirm motor state using PLC/AGV diagnostics.')
 
         if os.name != 'nt' and settings is not None:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)

@@ -143,7 +143,17 @@ class LastPoseManagerNode(Node):
             self.get_logger().error(f'Failed to save last pose: {e}')
 
     def publish_saved_initial_pose_once(self):
-        # timer는 1번만 실행
+        # AMCL은 lifecycle configure 단계에서 /initialpose 구독자를 만든다.
+        # Nav2 구성이 늦어질 경우 첫 발행이 유실될 수 있으므로 구독자가
+        # 확인될 때까지 이 타이머를 유지해 다음 주기에 다시 시도한다.
+        if self.initialpose_pub.get_subscription_count() == 0:
+            self.get_logger().warn(
+                'AMCL /initialpose subscriber is not ready. Retrying...',
+                throttle_duration_sec=5.0
+            )
+            return
+
+        # 구독자가 준비된 뒤에는 한 번만 발행한다.
         if self.init_timer is not None:
             self.init_timer.cancel()
             self.init_timer = None
@@ -213,7 +223,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # Safe even when launch already shut the rclpy context down on SIGINT.
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

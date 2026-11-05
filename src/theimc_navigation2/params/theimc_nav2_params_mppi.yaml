@@ -30,7 +30,9 @@ amcl:
     save_pose_rate: 0.5
     sigma_hit: 0.2
     tf_broadcast: true
-    transform_tolerance: 1.0
+    # /scan arrives about 0.1 s after its stamp. A 1.0 s future-dated
+    # map->odom transform made the global costmap reject otherwise valid scans.
+    transform_tolerance: 0.2
     update_min_a: 0.3
     update_min_d: 0.25
     z_hit: 0.5
@@ -67,7 +69,7 @@ bt_navigator:
     - nav2_compute_path_through_poses_action_bt_node
     - nav2_smooth_path_action_bt_node
     - nav2_follow_path_action_bt_node
-    # - nav2_spin_action_bt_node
+    - nav2_spin_action_bt_node
     - nav2_wait_action_bt_node
     - nav2_assisted_teleop_action_bt_node
     - nav2_back_up_action_bt_node
@@ -105,7 +107,7 @@ bt_navigator:
     - nav2_controller_cancel_bt_node
     - nav2_path_longer_on_approach_bt_node
     - nav2_wait_cancel_bt_node
-    # - nav2_spin_cancel_bt_node
+    - nav2_spin_cancel_bt_node
     - nav2_back_up_cancel_bt_node
     - nav2_assisted_teleop_cancel_bt_node
     - nav2_drive_on_heading_cancel_bt_node
@@ -130,13 +132,12 @@ controller_server:
 
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["precise_goal_checker"]
-    # current_goal_checker: "precise_goal_checker"
     controller_plugins: ["FollowPath"]
 
     precise_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 1.57
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.25
       stateful: True
 
     progress_checker:
@@ -151,11 +152,10 @@ controller_server:
       # 회전 후 실제 경로를 추종할 제어기
       primary_controller: "nav2_mppi_controller::MPPIController"
 
-      # 경로 방향과 30도 이상 차이나면 제자리 회전
       angular_dist_threshold: 0.52
-      angular_disengage_threshold: 2.0
+      angular_disengage_threshold: 0.2
       # 현재 위치에서 이 거리만큼 앞의 경로점을 보고 방향 계산
-      forward_sampling_distance: 0.30
+      forward_sampling_distance: 0.50
 
       # 대형 차체이므로 저속 회전부터 시험
       rotate_to_heading_angular_vel: 0.25
@@ -164,8 +164,8 @@ controller_server:
       # 회전 명령을 미리 시뮬레이션해 충돌 확인
       simulate_ahead_time: 1.0
 
-      # 현재 yaw 허용오차가 크므로 최종 목표 방향 회전은 끔
-      rotate_to_goal_heading: false
+      # Shim의 마지막 방향 정렬
+      rotate_to_goal_heading: true
 
       time_steps: 40
       model_dt: 0.10
@@ -280,25 +280,29 @@ local_costmap:
       robot_base_frame: agv_base_footprint
       use_sim_time: False
       rolling_window: true
-      width: 3
-      height: 3
+      width: 4
+      height: 4
       resolution: 0.06
       transform_tolerance: 0.5
-      footprint: "[[0.40, 0.55], [0.40, -0.55], [-0.40, -0.55], [-0.40, 0.55]]"
-      footprint_padding: 0.01
+      footprint: "[[0.61, 0.47], [0.61, -0.47], [-0.61, -0.47], [-0.61, 0.47]]"
+      footprint_padding: 0.03
+      # Remote RViz may miss the one transient initial grid and then receive
+      # only update patches. Publish the complete rolling grid every cycle.
+      always_send_full_costmap: True
 
       plugins: ["obstacle_layer", "inflation_layer"]
 
-      filters: ["keepout_filter"]
-      keepout_filter:
-       plugin: "nav2_costmap_2d::KeepoutFilter"
-       enabled: True
-       filter_info_topic: "/costmap_filter_info"
+      # Keepout 임시 비활성화
+      # filters: ["keepout_filter"]
+      # keepout_filter:
+      #   plugin: "nav2_costmap_2d::KeepoutFilter"
+      #   enabled: true
+      #   filter_info_topic: "/costmap_filter_info"
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.0
-        inflation_radius: 0.55
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.7
 
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -316,21 +320,21 @@ local_costmap:
           obstacle_max_range: 3.5
           obstacle_min_range: 0.15
 
-      stvl_layer:
-        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
-        enabled: true
-        publish_voxel_map: true
-        voxel_size: 0.05
-        voxel_decay: 1.0
-        observation_sources: pointcloud
-        pointcloud:
-          data_type: PointCloud2
-          topic: /points
-          reliability: 2
-          marking: true
-          clearing: true
-          obstacle_max_range: 2.5
-          obstacle_min_range: 0.2
+      # stvl_layer:
+      #   plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+      #   enabled: true
+      #   publish_voxel_map: true
+      #   voxel_size: 0.05
+      #   voxel_decay: 1.0
+      #   observation_sources: pointcloud
+      #   pointcloud:
+      #     data_type: PointCloud2
+      #     topic: /points
+      #     reliability: 2
+      #     marking: true
+      #     clearing: true
+      #     obstacle_max_range: 2.5
+      #     obstacle_min_range: 0.2
 
 global_costmap:
   global_costmap:
@@ -340,24 +344,24 @@ global_costmap:
       global_frame: map
       robot_base_frame: agv_base_footprint
       use_sim_time: False
-      footprint: "[[0.40, 0.55], [0.40, -0.55], [-0.40, -0.55], [-0.40, 0.55]]"
-      footprint_padding: 0.01
+      footprint: "[[0.61, 0.47], [0.61, -0.47], [-0.61, -0.47], [-0.61, 0.47]]"
+      footprint_padding: 0.03
       transform_tolerance: 0.5
       resolution: 0.06
       track_unknown_space: true
 
       # static_layer가 정의되어 있었는데 plugins에 빠져 있어서 추가
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # Dynamic scan obstacles are handled by the local costmap and MPPI.
+      # Keeping a scan layer in the map-frame global costmap caused repeated
+      # TF message-filter drops without improving local collision avoidance.
+      plugins: ["static_layer", "inflation_layer"]
 
-      filters: ["keepout_filter"]
-      keepout_filter:
-       plugin: "nav2_costmap_2d::KeepoutFilter"
-       enabled: True
-       filter_info_topic: "/costmap_filter_info"
-
-# filter_info_topic: "/costmap_filter_info"
-# type: 0
-# mask_topic: "/keepout_filter_mask"
+      # Keepout 임시 비활성화
+      # filters: ["keepout_filter"]
+      # keepout_filter:
+      #   plugin: "nav2_costmap_2d::KeepoutFilter"
+      #   enabled: true
+      #   filter_info_topic: "/costmap_filter_info"
 
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
@@ -381,8 +385,8 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.0
-        inflation_radius: 0.55
+        cost_scaling_factor: 8.0
+        inflation_radius: 0.75
 
       always_send_full_costmap: True
 
@@ -423,13 +427,16 @@ behavior_server:
     footprint_topic: local_costmap/published_footprint
     cycle_frequency: 10.0
 
-    behavior_plugins: ["backup", "wait"]
+    behavior_plugins: ["spin", "backup", "wait"]
 
     backup:
       plugin: "nav2_behaviors/BackUp"
 
     wait:
       plugin: "nav2_behaviors/Wait"
+
+    spin:
+      plugin: "nav2_behaviors/Spin"
 
     global_frame: odom
     robot_base_frame: agv_base_footprint
@@ -443,15 +450,25 @@ robot_state_publisher:
   ros__parameters:
     use_sim_time: False
 
-waypoint_follower:
+lifecycle_manager_localization:
   ros__parameters:
-    loop_rate: 2000
-    stop_on_failure: true
-    waypoint_task_executor_plugin: "wait_at_waypoint"
-    wait_at_waypoint:
-      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
-      enabled: True
-      waypoint_pause_duration: 200
+    bond_timeout: 15.0
+    bond_respawn_max_duration: 30.0
+
+lifecycle_manager_navigation:
+  ros__parameters:
+    bond_timeout: 15.0
+    bond_respawn_max_duration: 30.0
+
+# waypoint_follower:
+#   ros__parameters:
+#     loop_rate: 2000
+#     stop_on_failure: true
+#     waypoint_task_executor_plugin: "wait_at_waypoint"
+#     wait_at_waypoint:
+#       plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+#       enabled: True
+#       waypoint_pause_duration: 200
 
 # velocity_smoother:
 #   ros__parameters:
