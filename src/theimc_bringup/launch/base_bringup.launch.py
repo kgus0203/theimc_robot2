@@ -234,7 +234,7 @@ def generate_launch_description():
                 'velocity_scale': 1000.0,
 
                 # Beckhoff MoveVelocity parameters
-                'wheel_ramp_ms': 1000.0,
+                'wheel_ramp_ms': 600.0,
                 'rail_ramp_ms': 1000.0,
                 'jerk_percent': 100.0,
                 'rail_direction_stop_hold_ms': 200.0,
@@ -278,6 +278,7 @@ def generate_launch_description():
 
                 # Suppress repetitive normal-motion logs.
                 'log_motion_commands': False,  # reduce repetitive 20 Hz log output
+                'log_environment_sensor': False,
             }
         ],
     )

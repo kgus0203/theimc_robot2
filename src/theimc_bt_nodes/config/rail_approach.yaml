@@ -1,0 +1,25 @@
+# ROS 2 parameters for rail_approach_action_server_node.py
+# Load this file in the launch Node(parameters=[...]).
+simple_rail_approach_action_node:
+  ros__parameters:
+    perception_enable_topic: /rail_perception_enable
+    rail_info_topic: /rail_info
+    cmd_vel_topic: /cmd_vel_rail
+    success_topic: /rail_approach_success
+    manual_success_topic: /rail_approach_manual_success
+    control_rate_hz: 20.0
+    rail_timeout_sec: 0.5
+    target_x_error: -0.047
+    target_angle_deg: 0.0
+    # Initial field-test values; verify clearance and actual motion before autonomous use.
+    turn_speed: 0.35          # rad/s
+    forward_speed: 0.20      # m/s, approach only; separate from rail entry
+    backup_speed: 0.20       # m/s, approach recovery only
+    backup_angle_tolerance: 3.0
+    turn_pulse_sec: 0.30
+    far_forward_sec: 0.40
+    middle_forward_sec: 0.20
+    success_hold_sec: 0.30
+    near_fail_hold_sec: 0.50
+    middle_align_timeout_sec: 5.0
+

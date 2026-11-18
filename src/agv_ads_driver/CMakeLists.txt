@@ -77,6 +77,16 @@ if(NOT EXISTS "${ADSLIB_STATIC_LIB}")
     "Build AdsLib first and confirm libAdsLib.a exists.")
 endif()
 
+if(NOT EXISTS "${BECKHOFF_SRC_DIR}/TcSystem.cpp")
+  message(FATAL_ERROR
+    "TcSystem.cpp not found: ${BECKHOFF_SRC_DIR}/TcSystem.cpp")
+endif()
+
+if(NOT EXISTS "${BECKHOFF_INCLUDE_DIR}/TcSystem.h")
+  message(FATAL_ERROR
+    "TcSystem.h not found: ${BECKHOFF_INCLUDE_DIR}/TcSystem.h")
+endif()
+
 # ============================================================
 # Driver source
 #
@@ -111,6 +121,7 @@ add_executable(
   ${AGV_DRIVER_SOURCE}
   "${BECKHOFF_SRC_DIR}/TcMC.cpp"
   "${BECKHOFF_SRC_DIR}/TcMCApi.cpp"
+  "${BECKHOFF_SRC_DIR}/TcSystem.cpp"
 )
 
 target_include_directories(

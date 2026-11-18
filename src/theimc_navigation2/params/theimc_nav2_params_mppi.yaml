@@ -158,8 +158,8 @@ controller_server:
       forward_sampling_distance: 0.50
 
       # 대형 차체이므로 저속 회전부터 시험
-      rotate_to_heading_angular_vel: 0.25
-      max_angular_accel: 0.40
+      rotate_to_heading_angular_vel: 0.5
+      max_angular_accel: 0.5
 
       # 회전 명령을 미리 시뮬레이션해 충돌 확인
       simulate_ahead_time: 1.0
@@ -172,13 +172,13 @@ controller_server:
       batch_size: 500
       iteration_count: 1
 
-      vx_max: 0.45
+      vx_max: 0.5
 
       # 필요한 상황에서는 저속 후진 허용
-      vx_min: -0.05
+      vx_min: -0.5
 
       vy_max: 0.0
-      wz_max: 0.35
+      wz_max: 0.5
 
       vx_std: 0.08
       vy_std: 0.0
@@ -292,17 +292,22 @@ local_costmap:
 
       plugins: ["obstacle_layer", "inflation_layer"]
 
-      # Keepout 임시 비활성화
-      # filters: ["keepout_filter"]
-      # keepout_filter:
-      #   plugin: "nav2_costmap_2d::KeepoutFilter"
-      #   enabled: true
-      #   filter_info_topic: "/costmap_filter_info"
+      filters: ["keepout_filter", "keepout_inflation_layer"]
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: true
+        filter_info_topic: "/costmap_filter_info"
+        transform_tolerance: 0.5
+      keepout_inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.6
+        cost_scaling_factor: 5.0
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
-        inflation_radius: 0.7
+        inflation_radius: 0.6
 
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -354,14 +359,19 @@ global_costmap:
       # Dynamic scan obstacles are handled by the local costmap and MPPI.
       # Keeping a scan layer in the map-frame global costmap caused repeated
       # TF message-filter drops without improving local collision avoidance.
-      plugins: ["static_layer", "inflation_layer"]
+      plugins: ["static_layer", "inflation_layer", "obstacle_layer"]
 
-      # Keepout 임시 비활성화
-      # filters: ["keepout_filter"]
-      # keepout_filter:
-      #   plugin: "nav2_costmap_2d::KeepoutFilter"
-      #   enabled: true
-      #   filter_info_topic: "/costmap_filter_info"
+      filters: ["keepout_filter", "keepout_inflation_layer", "obstacle_layer"]
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: true
+        filter_info_topic: "/costmap_filter_info"
+        transform_tolerance: 0.5
+      keepout_inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.65
+        cost_scaling_factor: 3.0
 
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
@@ -386,8 +396,8 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 8.0
-        inflation_radius: 0.75
-
+        inflation_radius: 0.65
+      
       always_send_full_costmap: True
 
 map_server:

@@ -478,7 +478,7 @@
         on_rail_confirm_samples="3"/>
 
       <DriveUntilRailState
-        linear_x="0.2"
+        linear_x="{enter_speed}"
         angular_z="0.0"
         target_state="ON_RAIL"
         timeout_sec="20.0"/>
@@ -541,7 +541,8 @@
         rail_id="{rail_id}"
         x="{rail_x}"
         y="{rail_y}"
-        yaw="{rail_yaw}"/>
+        yaw="{rail_yaw}"
+        enter_speed="{enter_speed}"/>
 
       <GoToPose
         x="{rail_x}"
@@ -669,7 +670,8 @@
         rail_id="{rail_id}"
         x="{rail_x}"
         y="{rail_y}"
-        yaw="{rail_yaw}"/>
+        yaw="{rail_yaw}"
+        enter_speed="{enter_speed}"/>
 
       <GoToPose
         x="{rail_x}"

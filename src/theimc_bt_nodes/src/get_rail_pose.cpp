@@ -31,6 +31,7 @@ BT::PortsList GetRailPose::providedPorts()
     BT::OutputPort<double>("x", "Rail approach x coordinate"),
     BT::OutputPort<double>("y", "Rail approach y coordinate"),
     BT::OutputPort<double>("yaw", "Rail approach yaw in radians"),
+    BT::OutputPort<double>("enter_speed", "Rail-specific wheel entry speed in m/s"),
   };
 }
 
@@ -38,6 +39,12 @@ void GetRailPose::loadRailPoses(const std::string & yaml_path)
 {
   const YAML::Node root = YAML::LoadFile(yaml_path);
   const YAML::Node rails = root["rails"];
+  if (root["defaults"] && root["defaults"]["enter_speed"]) {
+    default_enter_speed_ = root["defaults"]["enter_speed"].as<double>();
+  }
+  if (default_enter_speed_ <= 0.0 || default_enter_speed_ > 0.5) {
+    throw std::runtime_error("defaults.enter_speed must be in (0, 0.5] m/s");
+  }
   if (!rails || !rails.IsMap()) {
     throw std::runtime_error("missing top-level 'rails' map in " + yaml_path);
   }
@@ -49,8 +56,15 @@ void GetRailPose::loadRailPoses(const std::string & yaml_path)
       throw std::runtime_error(
               "rail " + std::to_string(rail_id) + " requires x, y, and yaw in " + yaml_path);
     }
+    const double enter_speed = pose["enter_speed"] ?
+      pose["enter_speed"].as<double>() : default_enter_speed_;
+    if (enter_speed <= 0.0 || enter_speed > 0.5) {
+      throw std::runtime_error(
+              "rail " + std::to_string(rail_id) + " enter_speed must be in (0, 0.5] m/s");
+    }
     rail_poses_[rail_id] = RailPose{
-      pose["x"].as<double>(), pose["y"].as<double>(), pose["yaw"].as<double>()};
+      pose["x"].as<double>(), pose["y"].as<double>(),
+      pose["yaw"].as<double>(), enter_speed};
   }
 
   RCLCPP_INFO(
@@ -82,16 +96,18 @@ BT::NodeStatus GetRailPose::tick()
   }
 
   if (!setOutput("x", pose->second.x) || !setOutput("y", pose->second.y) ||
-    !setOutput("yaw", pose->second.yaw))
+    !setOutput("yaw", pose->second.yaw) ||
+    !setOutput("enter_speed", pose->second.enter_speed))
   {
     RCLCPP_ERROR(node_->get_logger(), "GetRailPose failed to write pose outputs for rail %d", rail_id);
     return BT::NodeStatus::FAILURE;
   }
 
   RCLCPP_INFO(
-    node_->get_logger(), "GetRailPose rail %d: x=%.3f, y=%.3f, yaw=%.3f",
-    rail_id, pose->second.x, pose->second.y, pose->second.yaw);
+    node_->get_logger(), "GetRailPose rail %d: x=%.3f, y=%.3f, yaw=%.3f, enter_speed=%.3f m/s",
+    rail_id, pose->second.x, pose->second.y, pose->second.yaw, pose->second.enter_speed);
   return BT::NodeStatus::SUCCESS;
 }
 
 }  // namespace theimc_bt_nodes
+

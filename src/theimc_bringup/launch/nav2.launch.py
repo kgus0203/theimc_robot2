@@ -204,13 +204,18 @@ def generate_launch_description():
     ld.add_action(dla_map_yaml_cmd)
     ld.add_action(dla_params_nav2_cmd)
 
-    # Keepout 임시 비활성화
-    # ld.add_action(filter_mask_server_cmd)
-    # ld.add_action(costmap_filter_info_server_cmd)
-    # ld.add_action(lifecycle_manager_keepout)
+    # Keepout mask와 filter 정보를 먼저 활성화한다.
+    ld.add_action(filter_mask_server_cmd)
+    ld.add_action(costmap_filter_info_server_cmd)
+    ld.add_action(lifecycle_manager_keepout)
 
-    # Keepout 토픽을 기다릴 필요가 없으므로 Nav2를 바로 실행한다.
-    ld.add_action(nav2_remapping_group)
+    # Keepout 토픽이 준비된 뒤 Nav2를 실행한다.
+    ld.add_action(
+        TimerAction(
+            period=10.0,
+            actions=[nav2_remapping_group]
+        )
+    )
 
     # Nav2/AMCL 실행 후 last pose manager 실행
     ld.add_action(

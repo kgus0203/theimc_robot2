@@ -37,9 +37,9 @@ class SimpleRailInfoExtractor(Node):
 
         self.declare_parameter('img_width', 640)
         self.declare_parameter('img_height', 480)
-        self.declare_parameter('far_ratio', 0.40)
+        self.declare_parameter('far_ratio', 0.65) # 상주 벽 뒤가 좁아서 공간이 별로 없음...
         # 이보다 가까우면 검출이 불안정해지므로 조금 일찍 near로 판정한다.
-        self.declare_parameter('near_ratio', 0.70)
+        self.declare_parameter('near_ratio', 0.80)
 
         self.declare_parameter('min_score', 0.25)
         self.declare_parameter('stale_sec', 0.40)

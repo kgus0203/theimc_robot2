@@ -27,6 +27,7 @@ private:
     double x;
     double y;
     double yaw;
+    double enter_speed;
   };
 
   void loadRailPoses(const std::string & yaml_path);
@@ -34,9 +35,11 @@ private:
   rclcpp::Node::SharedPtr node_;
   std::map<int, RailPose> rail_poses_;
   std::string yaml_path_;
+  double default_enter_speed_{0.20};
   std::string load_error_;
 };
 
 }  // namespace theimc_bt_nodes
 
 #endif  // THEIMC_BT_NODES__GET_RAIL_POSE_HPP_
+

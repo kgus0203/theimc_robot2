@@ -1,17 +1,21 @@
+# Coordinates from RViz2 /goal_pose (map frame), ordered rail 1 to rail 12.
+# enter_speed values are initial test defaults; adjust per rail after validation.
 locations:
-  # home: {x: 1.2145, y: -0.7806, yaw: 3.1125}
-  home: {x: -1.93162, y: -2.98803, yaw: 3.13067}
+  home: {x: 14.475953, y: -0.445113, yaw: -0.014014}
+
+defaults:
+  enter_speed: 0.20
 
 rails:
-  1: {x: -0.705, y: -1.768, yaw: 1.187}
-  2: {x: 0.285, y: -1.719, yaw: 0.028}
-  3: {x: -0.90, y: -2.77, yaw: 0.0}
-  4: {x: -0.90, y: -2.77, yaw: 0.0}
-  5: {x: -0.90, y: -2.77, yaw: 0.0}
-  6: {x: -0.90, y: -2.77, yaw: 0.0}
-  7: {x: -0.90, y: -2.77, yaw: 0.0}
-  8: {x: -0.90, y: -2.77, yaw: 0.0}
-  9: {x: -0.90, y: -2.77, yaw: 0.0}
-  10: {x: -0.90, y: -2.77, yaw: 0.0}
-  11: {x: -0.90, y: -2.77, yaw: 0.0}
-  12: {x: -0.90, y: -2.77, yaw: 0.0}
+  1: {x: -3.383112, y: 0.231978, yaw: 1.541406, enter_speed: 0.20}
+  2: {x: -1.380633, y: 0.392829, yaw: 1.583030, enter_speed: 0.20}
+  3: {x: 0.326848, y: 0.140175, yaw: 1.525812, enter_speed: 0.20}
+  4: {x: 2.547673, y: 0.031416, yaw: 1.600864, enter_speed: 0.20}
+  5: {x: 4.599705, y: 0.338482, yaw: 1.617469, enter_speed: 0.20}
+  6: {x: 6.407636, y: 0.646771, yaw: 1.598037, enter_speed: 0.20}
+  7: {x: 8.434158, y: 0.734270, yaw: 1.621290, enter_speed: 0.20}
+  8: {x: 10.362185, y: 0.651386, yaw: 1.609242, enter_speed: 0.20}
+  9: {x: 12.436062, y: 0.445720, yaw: 1.665460, enter_speed: 0.20}
+  10: {x: 14.290620, y: 0.314383, yaw: 1.605770, enter_speed: 0.20}
+  11: {x: 16.219135, y: 0.329141, yaw: 1.592099, enter_speed: 0.20}
+  12: {x: 17.951637, y: 0.198414, yaw: 1.492751, enter_speed: 0.20}

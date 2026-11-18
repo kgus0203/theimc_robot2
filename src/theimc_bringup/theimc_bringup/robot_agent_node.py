@@ -21,7 +21,7 @@ from nav_msgs.msg import Path
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from sensor_msgs.msg import BatteryState, JointState
-from std_msgs.msg import Bool, String
+from std_msgs.msg import Bool, Float32MultiArray, String
 from std_srvs.srv import Trigger
 
 from interfaces_pkg.action import RailApproach
@@ -48,6 +48,7 @@ ROBOT_ID = os.getenv("ROBOT_ID", DEVICE_PATH.replace("/", "_"))
 TOPIC_STATUS = f"{DEVICE_PATH}/status"
 TOPIC_EVENT = f"{DEVICE_PATH}/event"
 TOPIC_HEALTH = f"{DEVICE_PATH}/health"
+TOPIC_BATTERY_STATUS = f"{DEVICE_PATH}/battery/status"
 TOPIC_AMR_CMD = f"{DEVICE_PATH}/amr/cmd"
 TOPIC_AMR_STATUS = f"{DEVICE_PATH}/amr/status"
 TOPIC_AMR_POSE = f"{DEVICE_PATH}/amr/pose"
@@ -62,6 +63,15 @@ TOPIC_MISSION_STATUS = f"{DEVICE_PATH}/mission/status"
 TOPIC_MISSION_CMD_RESULT = f"{DEVICE_PATH}/mission/cmd_result"
 TOPIC_SYSTEM_CMD = f"{DEVICE_PATH}/system/cmd"
 TOPIC_SYSTEM_CMD_RESULT = f"{DEVICE_PATH}/system/cmd_result"
+
+SCHEMA_VERSION = 1
+RELIABLE_TOPICS = {
+    TOPIC_EVENT,
+    TOPIC_AMR_CMD_RESULT,
+    TOPIC_ARM_CMD_RESULT,
+    TOPIC_MISSION_CMD_RESULT,
+    TOPIC_SYSTEM_CMD_RESULT,
+}
 
 
 def _yaw_to_quaternion(yaw: float):
@@ -85,22 +95,36 @@ class RobotAgent(Node):
         self.declare_parameter("initial_pose_topic", "/initialpose")
         self.declare_parameter("pose_topic", "/amcl_pose")
         self.declare_parameter("plan_topic", "/plan")
+        self.declare_parameter("battery_topic", "/battery/state")
+        self.declare_parameter("legacy_battery_topic", "/battery_state")
+        self.declare_parameter("arm_joint_states_topic", "/arm/joint_states")
         self.declare_parameter("web_cmd_vel_topic", "/cmd_vel_teleop")
         self.declare_parameter("rail_cmd_vel_topic", "/cmd_rail")
         self.declare_parameter("rail_command_topic", "/rail_command")
         self.declare_parameter("arm_command_topic", "/arm_command")
         self.declare_parameter("capture_service", "/capture_image")
         self.declare_parameter("status_period_sec", 1.0)
+        self.declare_parameter("moving_period_sec", 0.2)
+        self.declare_parameter("battery_period_sec", 3.0)
+        self.declare_parameter("telemetry_stale_sec", 3.0)
         self.declare_parameter("jog_max_linear", 0.4)
         self.declare_parameter("jog_max_angular", 1.2)
 
         self.map_frame = str(self.get_parameter("map_frame").value)
         self.command_queue: queue.Queue = queue.Queue(maxsize=100)
         self.state_lock = threading.Lock()
+        self.sequence_lock = threading.Lock()
+        self.sequences: Dict[str, int] = {}
+        self.updated_at: Dict[str, float] = {}
+        self.source_timestamps: Dict[str, float] = {}
         self.pose: Optional[Dict[str, float]] = None
         self.path = []
         self.battery: Optional[Dict[str, Any]] = None
         self.joints: Dict[str, float] = {}
+        self.camera_health: Optional[Dict[str, Any]] = None
+        self.environment: Optional[Dict[str, Any]] = None
+        self.rail_state: Optional[str] = None
+        self.docking_state: Optional[str] = None
         self.mode = "IDLE"
         self.task_state = "READY"
         self.error: Optional[str] = None
@@ -118,6 +142,7 @@ class RobotAgent(Node):
         self.base_jog_active = False
         self.rail_jog_active = False
         self.mission_trigger_timer = None
+        self.last_battery_published_percent: Optional[float] = None
 
         self.initial_pose_pub = self.create_publisher(
             PoseWithCovarianceStamped,
@@ -141,10 +166,29 @@ class RobotAgent(Node):
             str(self.get_parameter("pose_topic").value), self._pose_cb, 10)
         self.create_subscription(
             Path, str(self.get_parameter("plan_topic").value), self._path_cb, 10)
-        self.create_subscription(BatteryState, "/battery_state", self._battery_cb, 10)
-        self.create_subscription(JointState, "/arm/joint_states", self._joints_cb, 10)
+        battery_topics = {
+            str(self.get_parameter("battery_topic").value),
+            str(self.get_parameter("legacy_battery_topic").value),
+        }
+        for battery_topic in battery_topics:
+            if battery_topic:
+                self.create_subscription(
+                    BatteryState, battery_topic, self._battery_cb, 10)
+        self.create_subscription(
+            JointState,
+            str(self.get_parameter("arm_joint_states_topic").value),
+            self._joints_cb,
+            10,
+        )
         self.create_subscription(
             String, "/arm_command_result", self._arm_command_result_cb, 10)
+        self.create_subscription(
+            String, "/camera_manager/health", self._camera_health_cb, 10)
+        self.create_subscription(
+            Float32MultiArray, "/environment/data", self._environment_cb, 10)
+        self.create_subscription(String, "/rail_state", self._rail_state_cb, 10)
+        self.create_subscription(
+            String, "/docking_status", self._docking_status_cb, 10)
 
         self.nav_client = ActionClient(self, NavigateToPose, "/navigate_to_pose")
         self.rail_client = ActionClient(self, RailApproach, "/rail_approach")
@@ -170,6 +214,12 @@ class RobotAgent(Node):
         self.create_timer(
             float(self.get_parameter("status_period_sec").value),
             self._publish_periodic)
+        self.create_timer(
+            float(self.get_parameter("moving_period_sec").value),
+            self._publish_moving)
+        self.create_timer(
+            float(self.get_parameter("battery_period_sec").value),
+            self._publish_battery)
         self._start_mqtt()
         self.get_logger().info(
             f"Robot agent ready: mqtt://{MQTT_BROKER}:{MQTT_PORT}/{DEVICE_PATH}")
@@ -210,9 +260,18 @@ class RobotAgent(Node):
 
     def _mqtt_publish(self, topic: str, payload: Dict[str, Any], retain=False):
         try:
+            message = dict(payload)
+            message.setdefault("schema_version", SCHEMA_VERSION)
+            message.setdefault("robot_id", ROBOT_ID)
+            message.setdefault("timestamp", time.time())
+            message.setdefault("quality", "GOOD")
+            with self.sequence_lock:
+                sequence = self.sequences.get(topic, 0) + 1
+                self.sequences[topic] = sequence
+            message.setdefault("sequence", sequence)
             self.mqtt.publish(
-                topic, json.dumps(payload, ensure_ascii=False, allow_nan=False),
-                qos=1, retain=retain)
+                topic, json.dumps(message, ensure_ascii=False, allow_nan=False),
+                qos=1 if topic in RELIABLE_TOPICS else 0, retain=retain)
         except Exception as exc:
             self.get_logger().warning(f"MQTT publish failed ({topic}): {exc}")
 
@@ -222,6 +281,7 @@ class RobotAgent(Node):
         with self.state_lock:
             self.pose = {"x": p.x, "y": p.y, "yaw": _quaternion_to_yaw(q),
                          "frame_id": msg.header.frame_id or self.map_frame}
+            self._mark_updated("pose", msg.header.stamp)
 
     def _path_cb(self, msg):
         points = []
@@ -232,22 +292,71 @@ class RobotAgent(Node):
             points.append({"x": p.x, "y": p.y})
         with self.state_lock:
             self.path = points
+            self._mark_updated("path", msg.header.stamp)
 
     def _battery_cb(self, msg):
         pct = float(msg.percentage)
         if math.isfinite(pct) and pct <= 1.0:
             pct *= 100.0
-        self.battery = {
-            "percentage": pct if math.isfinite(pct) else None,
-            "voltage": msg.voltage if math.isfinite(msg.voltage) else None,
-            "power_supply_status": int(msg.power_supply_status),
-        }
+        with self.state_lock:
+            self.battery = {
+                "percentage": pct if math.isfinite(pct) else None,
+                "voltage": msg.voltage if math.isfinite(msg.voltage) else None,
+                "current": msg.current if math.isfinite(msg.current) else None,
+                "temperature": (
+                    msg.temperature if math.isfinite(msg.temperature) else None
+                ),
+                "present": bool(msg.present),
+                "power_supply_status": int(msg.power_supply_status),
+                "power_supply_health": int(msg.power_supply_health),
+            }
+            self._mark_updated("battery", msg.header.stamp)
+            previous_pct = self.last_battery_published_percent
+            publish_now = math.isfinite(pct) and previous_pct is None
+            if math.isfinite(pct) and previous_pct is not None:
+                publish_now = abs(pct - previous_pct) >= 1.0
+        if publish_now:
+            self._publish_battery()
 
     def _joints_cb(self, msg):
-        self.joints = {
-            name: float(value) for name, value in zip(msg.name, msg.position)
-            if math.isfinite(value)
+        with self.state_lock:
+            self.joints = {
+                name: float(value) for name, value in zip(msg.name, msg.position)
+                if math.isfinite(value)
+            }
+            self._mark_updated("arm", msg.header.stamp)
+
+    def _camera_health_cb(self, msg):
+        try:
+            value = json.loads(msg.data)
+            if not isinstance(value, dict):
+                value = {"status": value}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            value = {"status": msg.data}
+        with self.state_lock:
+            self.camera_health = value
+            self._mark_updated("camera")
+
+    def _environment_cb(self, msg):
+        values = list(msg.data)
+        names = ("solar_radiation_w_m2", "temperature_c", "humidity_pct", "co2_ppm")
+        environment = {
+            name: (float(value) if math.isfinite(value) else None)
+            for name, value in zip(names, values)
         }
+        with self.state_lock:
+            self.environment = environment
+            self._mark_updated("environment")
+
+    def _rail_state_cb(self, msg):
+        with self.state_lock:
+            self.rail_state = str(msg.data)
+            self._mark_updated("rail")
+
+    def _docking_status_cb(self, msg):
+        with self.state_lock:
+            self.docking_state = str(msg.data)
+            self._mark_updated("docking")
 
     def _arm_command_result_cb(self, msg):
         try:
@@ -263,6 +372,7 @@ class RobotAgent(Node):
             return
 
         self.arm_state = "IDLE" if status == "SUCCEEDED" else status
+        self._mqtt_publish(TOPIC_ARM_STATUS, self._arm_status(), retain=True)
         self._result(
             TOPIC_ARM_CMD_RESULT,
             command_id,
@@ -270,6 +380,42 @@ class RobotAgent(Node):
             status,
             message,
         )
+
+    @staticmethod
+    def _stamp_seconds(stamp) -> Optional[float]:
+        if stamp is None:
+            return None
+        seconds = float(stamp.sec) + float(stamp.nanosec) / 1_000_000_000.0
+        return seconds if seconds > 0.0 else None
+
+    def _mark_updated(self, name: str, source_stamp=None):
+        """Record receipt time. Caller holds state_lock when shared data changes."""
+        self.updated_at[name] = time.time()
+        source_timestamp = self._stamp_seconds(source_stamp)
+        if source_timestamp is not None:
+            self.source_timestamps[name] = source_timestamp
+
+    def _quality(self, name: str, now: Optional[float] = None) -> str:
+        updated_at = self.updated_at.get(name)
+        if updated_at is None:
+            return "MISSING"
+        stale_sec = float(self.get_parameter("telemetry_stale_sec").value)
+        if (now or time.time()) - updated_at > stale_sec:
+            return "STALE"
+        return "GOOD"
+
+    def _freshness(self, name: str, now: Optional[float] = None):
+        checked_at = now or time.time()
+        updated_at = self.updated_at.get(name)
+        return {
+            "quality": self._quality(name, checked_at),
+            "updated_at": updated_at,
+            "age_sec": (
+                max(0.0, checked_at - updated_at)
+                if updated_at is not None else None
+            ),
+            "source_timestamp": self.source_timestamps.get(name),
+        }
 
     # Command routing ----------------------------------------------------
     def _process_commands(self):
@@ -410,6 +556,8 @@ class RobotAgent(Node):
                 self._result(TOPIC_AMR_CMD_RESULT, self.nav_command_id,
                              "NAVIGATE", "FAILED", "NAV_GOAL_REJECTED")
                 self.mode, self.task_state = "IDLE", "READY"
+                self._mqtt_publish(
+                    TOPIC_AMR_STATUS, self._amr_status(), retain=True)
                 return
             self.nav_goal_handle = handle
             handle.get_result_async().add_done_callback(self._nav_result)
@@ -423,6 +571,7 @@ class RobotAgent(Node):
         self.mode = "IDLE"
         self.task_state = "READY" if success else "ERROR"
         self.nav_goal_handle = None
+        self._mqtt_publish(TOPIC_AMR_STATUS, self._amr_status(), retain=True)
         self._result(TOPIC_AMR_CMD_RESULT, self.nav_command_id, "NAVIGATE",
                      "SUCCEEDED" if success else "FAILED",
                      "" if success else f"nav status={wrapped.status}")
@@ -456,6 +605,8 @@ class RobotAgent(Node):
                 self._result(TOPIC_AMR_CMD_RESULT, self.rail_command_id,
                              "RAIL_ENTER", "FAILED", "RAIL_GOAL_REJECTED")
                 self.mode, self.task_state = "IDLE", "READY"
+                self._mqtt_publish(
+                    TOPIC_AMR_STATUS, self._amr_status(), retain=True)
                 return
             self.rail_goal_handle = handle
             handle.get_result_async().add_done_callback(self._rail_result)
@@ -472,6 +623,7 @@ class RobotAgent(Node):
         reason = str(getattr(result, "reason", ""))
         self.mode, self.task_state = ("IDLE", "READY" if success else "ERROR")
         self.rail_goal_handle = None
+        self._mqtt_publish(TOPIC_AMR_STATUS, self._amr_status(), retain=True)
         self._result(TOPIC_AMR_CMD_RESULT, self.rail_command_id, "RAIL_ENTER",
                      "SUCCEEDED" if success else "FAILED", reason)
 
@@ -555,6 +707,7 @@ class RobotAgent(Node):
         else:
             self._result(TOPIC_MISSION_CMD_RESULT, cid, command, "REJECTED",
                          "UNKNOWN_COMMAND")
+        self._publish_mission_status()
 
     def _schedule_mission_trigger(self):
         if self.mission_trigger_timer is not None:
@@ -612,6 +765,7 @@ class RobotAgent(Node):
         except Exception as exc:
             success, reason = False, str(exc)
         self.arm_state = "IDLE" if success else "ERROR"
+        self._mqtt_publish(TOPIC_ARM_STATUS, self._arm_status(), retain=True)
         self._result(TOPIC_ARM_CMD_RESULT, cid, command,
                      "SUCCEEDED" if success else "FAILED", reason)
 
@@ -676,61 +830,182 @@ class RobotAgent(Node):
     def _amr_status(self, distance_remaining=None):
         with self.state_lock:
             pose = dict(self.pose) if self.pose else None
+            freshness = self._freshness("pose")
         return {
-            "robot_id": ROBOT_ID,
             "state": self.mode,
             "task_state": self.task_state,
             "pose": pose,
+            "pose_quality": freshness["quality"],
+            "pose_updated_at": freshness["updated_at"],
+            "pose_source_timestamp": freshness["source_timestamp"],
             "distance_remaining": distance_remaining,
             "emergency_stop": self.emergency,
             "error": self.error,
-            "timestamp": time.time(),
         }
 
+    def _arm_status(self):
+        with self.state_lock:
+            joints = dict(self.joints)
+            freshness = self._freshness("arm")
+        return {
+            "connection": (
+                "ONLINE" if freshness["quality"] == "GOOD" else
+                "STALE" if freshness["quality"] == "STALE" else "UNKNOWN"
+            ),
+            "state": self.arm_state,
+            "quality": freshness["quality"],
+            "joints": joints,
+            "joints_updated_at": freshness["updated_at"],
+            "source_timestamp": freshness["source_timestamp"],
+        }
+
+    def _mission_status(self):
+        with self.state_lock:
+            rail_state = self.rail_state
+            docking_state = self.docking_state
+            rail_freshness = self._freshness("rail")
+            docking_freshness = self._freshness("docking")
+        return {
+            "state": self.mission_state,
+            "selected_rails": list(self.selected_rails),
+            "rail_state": rail_state,
+            "rail_quality": rail_freshness["quality"],
+            "rail_updated_at": rail_freshness["updated_at"],
+            "docking_state": docking_state,
+            "docking_quality": docking_freshness["quality"],
+            "docking_updated_at": docking_freshness["updated_at"],
+        }
+
+    def _publish_mission_status(self):
+        self._mqtt_publish(
+            TOPIC_MISSION_STATUS, self._mission_status(), retain=True)
+
+    def _publish_battery(self):
+        with self.state_lock:
+            battery = dict(self.battery) if self.battery else None
+            freshness = self._freshness("battery")
+            if battery and battery.get("percentage") is not None:
+                self.last_battery_published_percent = battery["percentage"]
+        self._mqtt_publish(TOPIC_BATTERY_STATUS, {
+            "quality": freshness["quality"],
+            "battery": battery,
+            "updated_at": freshness["updated_at"],
+            "source_timestamp": freshness["source_timestamp"],
+        }, retain=True)
+
+    def _publish_moving(self):
+        amr_moving = any((
+            self.mode in ("AUTO", "MANUAL"),
+            self.task_state in ("NAVIGATING", "JOGGING", "RAIL_APPROACH"),
+        ))
+        if amr_moving:
+            self._mqtt_publish(TOPIC_AMR_STATUS, self._amr_status(), retain=True)
+            with self.state_lock:
+                pose = dict(self.pose) if self.pose else None
+                freshness = self._freshness("pose")
+            if pose is not None:
+                self._mqtt_publish(TOPIC_AMR_POSE, {
+                    "pose": pose,
+                    "quality": freshness["quality"],
+                    "updated_at": freshness["updated_at"],
+                    "source_timestamp": freshness["source_timestamp"],
+                })
+        if self.arm_state in ("MOVING", "CAPTURING"):
+            arm = self._arm_status()
+            self._mqtt_publish(TOPIC_ARM_STATUS, arm, retain=True)
+            if arm["joints"]:
+                self._mqtt_publish(TOPIC_ARM_JOINT_STATES, {
+                    "joints": arm["joints"],
+                    "quality": arm["quality"],
+                    "updated_at": arm["joints_updated_at"],
+                    "source_timestamp": arm["source_timestamp"],
+                })
+
     def _publish_periodic(self):
+        now = time.time()
         amr = self._amr_status()
         self._mqtt_publish(TOPIC_AMR_STATUS, amr, retain=True)
-        if self.pose is not None:
+        with self.state_lock:
+            pose = dict(self.pose) if self.pose else None
+            path = list(self.path)
+            pose_freshness = self._freshness("pose", now)
+            path_freshness = self._freshness("path", now)
+            battery = dict(self.battery) if self.battery else None
+            battery_freshness = self._freshness("battery", now)
+            camera_health = (
+                dict(self.camera_health) if self.camera_health else None
+            )
+            camera_freshness = self._freshness("camera", now)
+            environment = (
+                dict(self.environment) if self.environment else None
+            )
+            environment_freshness = self._freshness("environment", now)
+        if pose is not None:
             self._mqtt_publish(TOPIC_AMR_POSE, {
-                "robot_id": ROBOT_ID, "pose": self.pose, "timestamp": time.time()})
-        if self.path:
+                "pose": pose,
+                "quality": pose_freshness["quality"],
+                "updated_at": pose_freshness["updated_at"],
+                "source_timestamp": pose_freshness["source_timestamp"],
+            })
+        if path:
             self._mqtt_publish(TOPIC_AMR_PATH, {
-                "robot_id": ROBOT_ID, "path": self.path, "timestamp": time.time()})
-        arm = {
-            "robot_id": ROBOT_ID,
-            "connection": "ONLINE" if self.joints else "UNKNOWN",
-            "state": self.arm_state,
-            "joints": self.joints,
-            "timestamp": time.time(),
-        }
+                "path": path,
+                "quality": path_freshness["quality"],
+                "updated_at": path_freshness["updated_at"],
+                "source_timestamp": path_freshness["source_timestamp"],
+            })
+        arm = self._arm_status()
         self._mqtt_publish(TOPIC_ARM_STATUS, arm, retain=True)
-        if self.joints:
+        if arm["joints"]:
             self._mqtt_publish(TOPIC_ARM_JOINT_STATES, {
-                "robot_id": ROBOT_ID, "joints": self.joints,
-                "timestamp": time.time()})
-        mission = {
-            "robot_id": ROBOT_ID, "state": self.mission_state,
-            "selected_rails": self.selected_rails, "timestamp": time.time()}
+                "joints": arm["joints"],
+                "quality": arm["quality"],
+                "updated_at": arm["joints_updated_at"],
+                "source_timestamp": arm["source_timestamp"],
+            })
+        mission = self._mission_status()
         self._mqtt_publish(TOPIC_MISSION_STATUS, mission, retain=True)
         health = {
-            "robot_id": ROBOT_ID,
             "mqtt_connected": self.mqtt_connected,
             "ros_ok": rclpy.ok(),
-            "battery": self.battery,
-            "timestamp": time.time(),
+            "quality": "GOOD" if rclpy.ok() and self.mqtt_connected else "DEGRADED",
+            "components": {
+                "amr_pose": pose_freshness,
+                "battery": battery_freshness,
+                "arm": self._freshness("arm", now),
+                "camera": camera_freshness,
+                "environment": environment_freshness,
+                "rail": self._freshness("rail", now),
+                "docking": self._freshness("docking", now),
+                "nav2": {
+                    "quality": (
+                        "GOOD" if self.nav_client.server_is_ready() else "MISSING"
+                    )
+                },
+            },
+            "battery": battery,
+            "camera": camera_health,
+            "environment": environment,
         }
         self._mqtt_publish(TOPIC_HEALTH, health, retain=True)
         self._mqtt_publish(TOPIC_STATUS, {
-            "robot_id": ROBOT_ID,
             "device_path": DEVICE_PATH,
             "state": self.mode,
             "task_state": self.task_state,
-            "pose": self.pose,
+            "pose": pose,
+            "pose_updated_at": pose_freshness["updated_at"],
+            "battery_percent": (
+                battery.get("percentage") if battery else None
+            ),
+            "battery_updated_at": battery_freshness["updated_at"],
+            "mission_state": self.mission_state,
+            "arm_state": self.arm_state,
+            "arm_updated_at": arm["joints_updated_at"],
             "amr": amr,
             "arm": arm,
             "routine": mission,
             "health": health,
-            "last_seen": time.time(),
+            "last_seen": now,
         }, retain=True)
 
     def _publish_event(self, event: str, extra=None):
