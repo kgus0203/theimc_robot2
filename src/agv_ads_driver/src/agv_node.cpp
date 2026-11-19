@@ -20,6 +20,7 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "sensor_msgs/msg/imu.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/float32_multi_array.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -261,6 +262,41 @@ public:
 
     // Avoid repeatedly sending nearly-identical MoveVelocity requests.
     this->declare_parameter<double>("wheel_command_epsilon_mps", 0.005);
+
+    // PLC-feedback wheel balance for straight/reverse/pivot/curves.
+    // Equalize measured speed magnitude when target magnitudes are equal;
+    // on curves equalize actual/target tracking ratios.
+    this->declare_parameter<bool>("wheel_balance_enable", true);
+    this->declare_parameter<double>("wheel_balance_kp", 0.20);
+    this->declare_parameter<double>("wheel_balance_max_correction_mps", 0.010);
+    this->declare_parameter<double>("wheel_balance_deadband_mps", 0.005);
+    this->declare_parameter<double>("wheel_balance_min_speed_mps", 0.050);
+    this->declare_parameter<double>("wheel_balance_angular_threshold_rps", 0.030);
+    this->declare_parameter<double>("wheel_balance_filter_alpha", 0.15);
+    // Minimum time after BOTH accepted Axis1/2 MoveVelocity commands
+    // before computing another feedback-driven correction.
+    this->declare_parameter<double>("wheel_balance_settle_sec", 1.50);
+    this->declare_parameter<double>("wheel_balance_stable_hold_sec", 1.0);
+    this->declare_parameter<double>("wheel_balance_release_rate_mps2", 0.005);
+    this->declare_parameter<double>("wheel_balance_reverse_hold_sec", 0.25);
+
+    // IMU yaw heading hold (straight) and yaw-rate tracking (turning).
+    // Conservative, sampled updates to avoid Beckhoff MoveVelocity chatter.
+    this->declare_parameter<bool>("imu_correction_enable", true);
+    this->declare_parameter<double>("imu_timeout_sec", 0.5);
+    this->declare_parameter<double>("imu_heading_kp", 0.30);
+    this->declare_parameter<double>("imu_heading_kd", 0.1);
+    this->declare_parameter<double>("imu_turn_kp", 0.3);
+    this->declare_parameter<double>("imu_max_angular_correction_rps", 0.05);
+    // Limit the change per completed IMU control update, not every 20Hz timer tick.
+    this->declare_parameter<double>("imu_max_correction_step_rps", 0.015);
+    this->declare_parameter<double>("imu_correction_interval_sec", 2.0);
+    this->declare_parameter<double>("imu_straight_angular_threshold_rps", 0.03);
+    this->declare_parameter<double>("imu_min_wheel_speed_mps", 0.08);
+    // Site-verified IMU yaw axis is opposite ROS positive yaw; invert both
+    // quaternion-derived yaw and angular_velocity.z consistently.
+    // A launch/YAML override takes precedence over this default.
+    this->declare_parameter<double>("imu_yaw_sign", -1.0);
     // Limit Beckhoff MoveVelocity ADS calls. Nav2 may publish at 20+ Hz, but
     // the PLC motion method must not be called for every small velocity update.
     // STOP is one-shot per accepted MoveVelocity, never retried after BUSY.
@@ -375,6 +411,43 @@ public:
 
     wheel_command_epsilon_mps_ =
       std::fabs(this->get_parameter("wheel_command_epsilon_mps").as_double());
+
+    wheel_balance_enable_ = this->get_parameter("wheel_balance_enable").as_bool();
+    wheel_balance_kp_ = this->get_parameter("wheel_balance_kp").as_double();
+    wheel_balance_max_correction_mps_ =
+      std::fabs(this->get_parameter("wheel_balance_max_correction_mps").as_double());
+    wheel_balance_deadband_mps_ =
+      std::fabs(this->get_parameter("wheel_balance_deadband_mps").as_double());
+    wheel_balance_min_speed_mps_ =
+      std::fabs(this->get_parameter("wheel_balance_min_speed_mps").as_double());
+    wheel_balance_angular_threshold_rps_ =
+      std::fabs(this->get_parameter("wheel_balance_angular_threshold_rps").as_double());
+    wheel_balance_filter_alpha_ =
+      this->get_parameter("wheel_balance_filter_alpha").as_double();
+    wheel_balance_settle_sec_ =
+      this->get_parameter("wheel_balance_settle_sec").as_double();
+    wheel_balance_stable_hold_sec_ =
+      this->get_parameter("wheel_balance_stable_hold_sec").as_double();
+    wheel_balance_release_rate_mps2_ =
+      this->get_parameter("wheel_balance_release_rate_mps2").as_double();
+    wheel_balance_reverse_hold_sec_ =
+      this->get_parameter("wheel_balance_reverse_hold_sec").as_double();
+    imu_correction_enable_ = this->get_parameter("imu_correction_enable").as_bool();
+    imu_timeout_sec_ = this->get_parameter("imu_timeout_sec").as_double();
+    imu_heading_kp_ = this->get_parameter("imu_heading_kp").as_double();
+    imu_heading_kd_ = this->get_parameter("imu_heading_kd").as_double();
+    imu_turn_kp_ = this->get_parameter("imu_turn_kp").as_double();
+    imu_max_angular_correction_rps_ =
+      this->get_parameter("imu_max_angular_correction_rps").as_double();
+    imu_max_correction_step_rps_ =
+      this->get_parameter("imu_max_correction_step_rps").as_double();
+    imu_correction_interval_sec_ =
+      this->get_parameter("imu_correction_interval_sec").as_double();
+    imu_straight_angular_threshold_rps_ =
+      this->get_parameter("imu_straight_angular_threshold_rps").as_double();
+    imu_min_wheel_speed_mps_ =
+      this->get_parameter("imu_min_wheel_speed_mps").as_double();
+    imu_yaw_sign_ = normalize_sign(this->get_parameter("imu_yaw_sign").as_double());
     wheel_move_command_min_interval_ms_ =
       this->get_parameter("wheel_move_command_min_interval_ms").as_double();
     ads_command_settle_extra_ms_ = this->get_parameter("ads_command_settle_extra_ms").as_double();
@@ -471,6 +544,10 @@ public:
     cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
       "/cmd_vel", 10,
       std::bind(&AgvAdsDriver::cmd_vel_callback, this, std::placeholders::_1));
+
+    imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+      "/imu", rclcpp::SensorDataQoS(),
+      std::bind(&AgvAdsDriver::imu_callback, this, std::placeholders::_1));
 
     rail_cmd_speed_sub_ = this->create_subscription<std_msgs::msg::Float32>(
       "/rail/cmd_speed", 10,
@@ -818,6 +895,44 @@ private:
     {
       throw std::runtime_error("wheel_move_command_min_interval_ms must be >= 0");
     }
+
+    if (!std::isfinite(imu_timeout_sec_) || imu_timeout_sec_ <= 0.0 ||
+        !std::isfinite(imu_heading_kp_) || imu_heading_kp_ < 0.0 ||
+        !std::isfinite(imu_heading_kd_) || imu_heading_kd_ < 0.0 ||
+        !std::isfinite(imu_turn_kp_) || imu_turn_kp_ < 0.0 ||
+        !std::isfinite(imu_max_angular_correction_rps_) ||
+        imu_max_angular_correction_rps_ < 0.0 || imu_max_angular_correction_rps_ > 0.2 ||
+        !std::isfinite(imu_max_correction_step_rps_) ||
+        imu_max_correction_step_rps_ <= 0.0 || imu_max_correction_step_rps_ > 0.2 ||
+        !std::isfinite(imu_correction_interval_sec_) || imu_correction_interval_sec_ < 1.5 ||
+        !std::isfinite(imu_straight_angular_threshold_rps_) ||
+        imu_straight_angular_threshold_rps_ < 0.0 ||
+        !std::isfinite(imu_min_wheel_speed_mps_) || imu_min_wheel_speed_mps_ <= 0.0) {
+      throw std::runtime_error("invalid IMU steering parameters");
+    }
+    if (!std::isfinite(wheel_balance_kp_) || wheel_balance_kp_ < 0.0 ||
+        !std::isfinite(wheel_balance_max_correction_mps_) ||
+        wheel_balance_max_correction_mps_ < 0.0 ||
+        !std::isfinite(wheel_balance_deadband_mps_) ||
+        wheel_balance_deadband_mps_ < 0.0 ||
+        !std::isfinite(wheel_balance_min_speed_mps_) ||
+        wheel_balance_min_speed_mps_ < 0.0 ||
+        !std::isfinite(wheel_balance_angular_threshold_rps_) ||
+        wheel_balance_angular_threshold_rps_ < 0.0 ||
+        !std::isfinite(wheel_balance_filter_alpha_) ||
+        wheel_balance_filter_alpha_ <= 0.0 ||
+        wheel_balance_filter_alpha_ > 1.0 ||
+        !std::isfinite(wheel_balance_settle_sec_) ||
+        wheel_balance_settle_sec_ < 0.5 || wheel_balance_settle_sec_ > 10.0 ||
+        !std::isfinite(wheel_balance_stable_hold_sec_) ||
+        wheel_balance_stable_hold_sec_ < 0.2 || wheel_balance_stable_hold_sec_ > 10.0 ||
+        !std::isfinite(wheel_balance_release_rate_mps2_) ||
+        wheel_balance_release_rate_mps2_ <= 0.0 || wheel_balance_release_rate_mps2_ > 0.1 ||
+        !std::isfinite(wheel_balance_reverse_hold_sec_) ||
+        wheel_balance_reverse_hold_sec_ < 0.05 || wheel_balance_reverse_hold_sec_ > 3.0)
+    {
+      throw std::runtime_error("invalid wheel balance parameters");
+    }
     if (!std::isfinite(wheel_stop_pending_timeout_sec_) ||
         wheel_stop_pending_timeout_sec_ <= 0.0)
     {
@@ -901,6 +1016,8 @@ private:
     wheel_pair_stable_initialized_ = false;
     wheel_direction_pending_left_mps_ = 0.0;
     wheel_direction_pending_right_mps_ = 0.0;
+    reset_wheel_balance();
+    reset_imu_correction();
   }
 
   void enter_safe_stop(const std::string & reason)
@@ -4355,9 +4472,327 @@ private:
     return false;
   }
 
+  static double wrap_yaw(double a)
+  {
+    return std::atan2(std::sin(a), std::cos(a));
+  }
+
+  void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
+  {
+    if (!imu_correction_enable_) return;
+    const auto & q = msg->orientation;
+    const double n2 = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+    const bool orientation_known = msg->orientation_covariance[0] >= 0.0;
+    const bool gyro_known = msg->angular_velocity_covariance[0] >= 0.0;
+    if (!orientation_known || !gyro_known || !std::isfinite(n2) || n2 < 0.25 || n2 > 2.25 ||
+        !std::isfinite(msg->angular_velocity.z) || !std::isfinite(q.x) ||
+        !std::isfinite(q.y) || !std::isfinite(q.z) || !std::isfinite(q.w)) {
+      imu_valid_ = false;
+      return;
+    }
+    const double n = std::sqrt(n2);
+    const double x=q.x/n, y=q.y/n, z=q.z/n, w=q.w/n;
+    imu_yaw_rad_ = wrap_yaw(imu_yaw_sign_ *
+      std::atan2(2.0 * (w*z + x*y), 1.0 - 2.0*(y*y + z*z)));
+    imu_yaw_rate_rps_ = imu_yaw_sign_ * msg->angular_velocity.z;
+    imu_last_rx_tp_ = std::chrono::steady_clock::now();
+    imu_valid_ = true;
+  }
+
+  void reset_imu_correction()
+  {
+    imu_straight_active_ = false;
+    imu_angular_correction_rps_ = 0.0;
+    imu_eval_initialized_ = false;
+  }
+
+  // Only update the PLC steering offset after BOTH previous commands have had
+  // time to settle. IMU callback does not transmit any ADS commands.
+  double imu_steering_correction(double linear_mps, double angular_rps)
+  {
+    const auto now = std::chrono::steady_clock::now();
+    const bool fresh = imu_valid_ &&
+      std::chrono::duration<double>(now - imu_last_rx_tp_).count() <= imu_timeout_sec_;
+    const bool stopped = std::fabs(linear_mps) < 1.0e-6 &&
+      std::fabs(angular_rps) < 1.0e-6;
+    const bool near_straight = std::fabs(angular_rps) <= imu_straight_angular_threshold_rps_;
+    const bool straight = near_straight &&
+      std::fabs(linear_mps) >= imu_min_wheel_speed_mps_;
+    if (!imu_correction_enable_ || !fresh || stopped ||
+        wheel_direction_change_active_ || wheel_stop_pending_ ||
+        left_waiting_for_stop_ || right_waiting_for_stop_) {
+      if (imu_angular_correction_rps_ != 0.0 && !fresh) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+          "[IMU] stale/invalid data; steering correction disabled");
+      }
+      reset_imu_correction();
+      return 0.0;
+    }
+    if (straight && !imu_straight_active_) {
+      // Every fresh straight segment gets a new hold-heading reference.
+      imu_target_yaw_rad_ = imu_yaw_rad_;
+      imu_straight_active_ = true;
+      imu_angular_correction_rps_ = 0.0;
+      imu_eval_initialized_ = true;
+      imu_last_eval_tp_ = now;
+      RCLCPP_INFO(this->get_logger(), "[IMU HEADING] reference yaw=%+.3f rad", imu_target_yaw_rad_);
+      return 0.0;
+    }
+    if (!straight && imu_straight_active_) {
+      imu_straight_active_ = false;
+      imu_angular_correction_rps_ = 0.0;
+      imu_eval_initialized_ = false;
+    }
+
+    const auto li = static_cast<std::size_t>(left_wheel_axis_);
+    const auto ri = static_cast<std::size_t>(right_wheel_axis_);
+    const double settle_s = std::max(wheel_balance_settle_sec_,
+      (wheel_ramp_ms_ + ads_command_settle_extra_ms_) / 1000.0 + 0.25);
+    const bool pair_settled = last_accepted_move_initialized_[li] &&
+      last_accepted_move_initialized_[ri] &&
+      std::chrono::duration<double>(now-last_accepted_move_tp_[li]).count() >= settle_s &&
+      std::chrono::duration<double>(now-last_accepted_move_tp_[ri]).count() >= settle_s;
+    if (pair_settled && (!imu_eval_initialized_ ||
+        std::chrono::duration<double>(now-imu_last_eval_tp_).count() >=
+          std::max(settle_s, imu_correction_interval_sec_))) {
+      const double yaw_error = straight ? wrap_yaw(imu_target_yaw_rad_ - imu_yaw_rad_) : 0.0;
+      const double raw = straight ?
+        imu_heading_kp_*yaw_error - imu_heading_kd_*imu_yaw_rate_rps_ :
+        imu_turn_kp_*(angular_rps - imu_yaw_rate_rps_);
+      const double original_left = linear_mps - angular_rps*wheel_separation_m_/2.0;
+      const double original_right = linear_mps + angular_rps*wheel_separation_m_/2.0;
+      // Never let a heading correction reverse a wheel or introduce a
+      // nonzero command on a deliberately stopped inside wheel.
+      const double axis_margin = 0.35 * std::min(std::fabs(original_left), std::fabs(original_right));
+      const double max_corr = std::min(imu_max_angular_correction_rps_,
+        2.0*axis_margin/wheel_separation_m_);
+      // Keep the ultimate steering authority, but prevent an abrupt jump
+      // such as -0.05 -> +0.05 rad/s on a single PLC update.
+      // This is applied only when the prior Axis1/2 commands are settled.
+      const double desired_corr = std::clamp(raw, -max_corr, max_corr);
+      const double previous_corr = imu_angular_correction_rps_;
+      const double step = std::min(imu_max_correction_step_rps_, max_corr);
+      imu_angular_correction_rps_ = std::clamp(
+        desired_corr, previous_corr - step, previous_corr + step);
+      // Preserve the current wheel-direction guard even if operating limits
+      // shrink between updates (e.g. a change from forward to curved motion).
+      imu_angular_correction_rps_ = std::clamp(
+        imu_angular_correction_rps_, -max_corr, max_corr);
+      imu_last_eval_tp_ = now;
+      imu_eval_initialized_ = true;
+      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1500,
+        "[IMU CONTROL] mode=%s yaw=%+.3f ref=%+.3f rate=%+.3f target_rate=%+.3f raw=%+.4f desired=%+.4f prev=%+.4f corr=%+.4f step_max=%.4f rad/s",
+        straight ? "HEADING" : "RATE", imu_yaw_rad_, imu_target_yaw_rad_,
+        imu_yaw_rate_rps_, angular_rps, raw, desired_corr, previous_corr,
+        imu_angular_correction_rps_, step);
+    }
+    return imu_angular_correction_rps_;
+  }
+
   // ============================================================
   // Wheel control
   // ============================================================
+  void reset_wheel_balance()
+  {
+    wheel_balance_error_filtered_mps_ = 0.0;
+    wheel_balance_initialized_ = false;
+    wheel_balance_correction_mps_ = 0.0;
+    wheel_balance_reference_initialized_ = false;
+    wheel_balance_eval_initialized_ = false;
+    wheel_balance_stable_tracking_ = false;
+    wheel_balance_reverse_tracking_ = false;
+    wheel_balance_release_active_ = false;
+    wheel_balance_tick_initialized_ = false;
+    wheel_balance_reference_left_mps_ = 0.0;
+    wheel_balance_reference_right_mps_ = 0.0;
+  }
+
+  void apply_wheel_balance(
+    double & left_target_mps,
+    double & right_target_mps)
+  {
+    // Balance the measured PLC wheel velocities, including reverse and pivot turns.
+    // The incoming signed targets are the UNCORRECTED differential-drive setpoints.
+    // For curves, compare measured/commanded speed ratios rather than forcing
+    // unequal target wheel speeds to become equal.
+    const double base_left = left_target_mps;
+    const double base_right = right_target_mps;
+    const double left_nominal = std::fabs(base_left);
+    const double right_nominal = std::fabs(base_right);
+    if (!wheel_balance_enable_ ||
+        left_nominal < wheel_balance_min_speed_mps_ ||
+        right_nominal < wheel_balance_min_speed_mps_ ||
+        wheel_direction_change_active_ || wheel_stop_pending_ ||
+        left_waiting_for_stop_ || right_waiting_for_stop_) {
+      reset_wheel_balance();
+      return;
+    }
+
+    // Reset the feedback filter and previous correction on a change in either
+    // intended wheel target (including a direction change / pivot turn).
+    if (!wheel_balance_reference_initialized_ ||
+        std::fabs(base_left - wheel_balance_reference_left_mps_) >
+          wheel_command_epsilon_mps_ ||
+        std::fabs(base_right - wheel_balance_reference_right_mps_) >
+          wheel_command_epsilon_mps_) {
+      reset_wheel_balance();
+      wheel_balance_reference_initialized_ = true;
+      wheel_balance_reference_left_mps_ = base_left;
+      wheel_balance_reference_right_mps_ = base_right;
+      return;
+    }
+
+    const auto li = static_cast<std::size_t>(left_wheel_axis_);
+    const auto ri = static_cast<std::size_t>(right_wheel_axis_);
+    const auto now = std::chrono::steady_clock::now();
+    const double settle_s = std::max(wheel_balance_settle_sec_,
+      (wheel_ramp_ms_ + ads_command_settle_extra_ms_) / 1000.0 + 0.25);
+
+    // A command ACK only confirms method acceptance, not that the wheel
+    // reached the new setpoint. Require BOTH wheels' latest accepted commands
+    // to age past the ramp/settling window before computing a new correction.
+    const bool pair_has_moves =
+      last_accepted_move_initialized_[li] && last_accepted_move_initialized_[ri];
+    const bool pair_settled = pair_has_moves &&
+      std::chrono::duration<double>(now - last_accepted_move_tp_[li]).count() >= settle_s &&
+      std::chrono::duration<double>(now - last_accepted_move_tp_[ri]).count() >= settle_s;
+
+    const double left_actual = actual_left_mps_;
+    const double right_actual = actual_right_mps_;
+    const double left_sign = base_left >= 0.0 ? 1.0 : -1.0;
+    const double right_sign = base_right >= 0.0 ? 1.0 : -1.0;
+    const double min_feedback = std::max(0.010, wheel_balance_min_speed_mps_ * 0.40);
+    const bool feedback_ok = std::isfinite(left_actual) &&
+      std::isfinite(right_actual) &&
+      left_actual * left_sign >= min_feedback &&
+      right_actual * right_sign >= min_feedback;
+
+    if (!feedback_ok) {
+      // Do not boost a blocked/stalled wheel or use opposite-direction feedback.
+      reset_wheel_balance();
+      wheel_balance_reference_initialized_ = true;
+      wheel_balance_reference_left_mps_ = base_left;
+      wheel_balance_reference_right_mps_ = base_right;
+      return;
+    }
+
+    // Equal-magnitude commands (straight / reverse / pivot): this is simply
+    // abs(left_actual) - abs(right_actual). For unequal curve commands,
+    // normalize each measured magnitude by its own intended magnitude.
+    const double nominal_mean = 0.5 * (left_nominal + right_nominal);
+    const double left_tracking = std::fabs(left_actual) / left_nominal;
+    const double right_tracking = std::fabs(right_actual) / right_nominal;
+    const double raw_error = (left_tracking - right_tracking) * nominal_mean;
+    const double dt = wheel_balance_tick_initialized_ ?
+      std::clamp(std::chrono::duration<double>(now - wheel_balance_last_tick_tp_).count(),
+                 0.0, 0.10) : 0.0;
+    wheel_balance_last_tick_tp_ = now;
+    wheel_balance_tick_initialized_ = true;
+
+    // Stable band: start a timer only after continuously staying in deadband.
+    // A single close-to-zero sample must NOT cancel a useful correction.
+    if (std::fabs(raw_error) <= wheel_balance_deadband_mps_) {
+      if (!wheel_balance_stable_tracking_) {
+        wheel_balance_stable_tracking_ = true;
+        wheel_balance_stable_since_ = now;
+      }
+    } else {
+      wheel_balance_stable_tracking_ = false;
+      wheel_balance_release_active_ = false;
+    }
+
+    const bool stable_confirmed = wheel_balance_stable_tracking_ &&
+      std::chrono::duration<double>(now - wheel_balance_stable_since_).count() >=
+        wheel_balance_stable_hold_sec_;
+    if (stable_confirmed && !wheel_balance_release_active_) {
+      wheel_balance_release_active_ = true;
+      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "[WHEEL BALANCE HOLD] error within %.3f m/s for %.2fs; gradually releasing",
+        wheel_balance_deadband_mps_, wheel_balance_stable_hold_sec_);
+    }
+
+    // Opposite SIGN (with real magnitude) must persist briefly before
+    // dropping a stale correction, otherwise noisy zero crossings chatter.
+    const bool clear_reverse =
+      std::fabs(raw_error) > wheel_balance_deadband_mps_ &&
+      wheel_balance_correction_mps_ * raw_error < 0.0;
+    if (clear_reverse) {
+      if (!wheel_balance_reverse_tracking_) {
+        wheel_balance_reverse_tracking_ = true;
+        wheel_balance_reverse_since_ = now;
+      }
+    } else {
+      wheel_balance_reverse_tracking_ = false;
+    }
+    const bool reverse_confirmed = wheel_balance_reverse_tracking_ &&
+      std::chrono::duration<double>(now - wheel_balance_reverse_since_).count() >=
+        wheel_balance_reverse_hold_sec_;
+    if (reverse_confirmed) {
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "[WHEEL BALANCE REVERSE] current_error=%+.3f prev_correction=%+.3f; "
+        "dropping stale bias after %.2fs sustained reversal",
+        raw_error, wheel_balance_correction_mps_, wheel_balance_reverse_hold_sec_);
+      wheel_balance_correction_mps_ = 0.0;
+      wheel_balance_initialized_ = false;
+      wheel_balance_error_filtered_mps_ = 0.0;
+      wheel_balance_reverse_tracking_ = false;
+      wheel_balance_eval_initialized_ = true;
+      wheel_balance_last_eval_tp_ = now;
+      // Keep the base targets. No opposite-sign correction until the PLC
+      // confirms both wheel commands have settled again.
+      return;
+    }
+
+    if (wheel_balance_release_active_) {
+      const double decrement = wheel_balance_release_rate_mps2_ * dt;
+      if (wheel_balance_correction_mps_ > 0.0) {
+        wheel_balance_correction_mps_ =
+          std::max(0.0, wheel_balance_correction_mps_ - decrement);
+      } else {
+        wheel_balance_correction_mps_ =
+          std::min(0.0, wheel_balance_correction_mps_ + decrement);
+      }
+      if (wheel_balance_correction_mps_ == 0.0) {
+        wheel_balance_initialized_ = false;
+        wheel_balance_error_filtered_mps_ = 0.0;
+      }
+    } else {
+      const bool evaluation_due = !wheel_balance_eval_initialized_ ||
+        std::chrono::duration<double>(now - wheel_balance_last_eval_tp_).count() >= settle_s;
+      if (pair_settled && evaluation_due && !wheel_balance_stable_tracking_) {
+        wheel_balance_last_eval_tp_ = now;
+        wheel_balance_eval_initialized_ = true;
+        // Avoid using the old filter sign when the raw mismatch has flipped.
+        if (!wheel_balance_initialized_ ||
+            raw_error * wheel_balance_error_filtered_mps_ <= 0.0) {
+          wheel_balance_error_filtered_mps_ = raw_error;
+          wheel_balance_initialized_ = true;
+        } else {
+          wheel_balance_error_filtered_mps_ =
+            wheel_balance_filter_alpha_ * raw_error +
+            (1.0 - wheel_balance_filter_alpha_) * wheel_balance_error_filtered_mps_;
+        }
+        const double max_correction = std::min(
+          wheel_balance_max_correction_mps_, std::min(left_nominal, right_nominal) * 0.40);
+        wheel_balance_correction_mps_ = std::clamp(
+          wheel_balance_kp_ * wheel_balance_error_filtered_mps_,
+          -max_correction, max_correction);
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+          "[WHEEL BALANCE] target L=%+.3f R=%+.3f actual L=%+.3f R=%+.3f "
+          "tracking L=%.3f R=%.3f err=%+.3f corr=%+.3f settle=%.2fs",
+          base_left, base_right, left_actual, right_actual,
+          left_tracking, right_tracking, raw_error,
+          wheel_balance_correction_mps_, settle_s);
+      }
+    }
+
+    // Hold a bounded correction during PLC ramp/settle; keep original wheel
+    // directions and proportional target ratio on curved paths. Never cross 0.
+    const double relative_correction = wheel_balance_correction_mps_ / nominal_mean;
+    left_target_mps = left_sign * left_nominal * (1.0 - relative_correction);
+    right_target_mps = right_sign * right_nominal * (1.0 + relative_correction);
+  }
+
   void apply_wheel_command(double linear_mps, double angular_rps)
   {
     // Final safety barrier: no MoveVelocity path is allowed while a real axis
@@ -4425,10 +4860,18 @@ private:
       return;
     }
 
+    // IMU adds a bounded steering delta. It never writes to PLC directly.
+    // Balance uses the IMU-adjusted wheel targets as its ratio references,
+    // so it cannot cancel an intentionally requested turn.
+    const double imu_delta = imu_steering_correction(linear_mps, angular_rps);
+    const double controlled_angular = angular_rps + imu_delta;
     double left_target_mps =
-      linear_mps - angular_rps * wheel_separation_m_ / 2.0;
+      linear_mps - controlled_angular * wheel_separation_m_ / 2.0;
     double right_target_mps =
-      linear_mps + angular_rps * wheel_separation_m_ / 2.0;
+      linear_mps + controlled_angular * wheel_separation_m_ / 2.0;
+
+    // PLC feedback-based balance for straight, reverse, pivot, and curved motion.
+    apply_wheel_balance(left_target_mps, right_target_mps);
 
     // Clamp ACTUAL wheel axis setpoints (not only Twist.linear), since a
     // steering command can otherwise exceed the dual-drive speed cap.
@@ -5313,6 +5756,57 @@ private:
   std::array<bool, 4> fault_reset_attempted_{{false, false, false, false}};
 
   double wheel_command_epsilon_mps_{0.005};
+
+  // IMU-assisted steering is independent from motor velocity balancing.
+  bool imu_correction_enable_{true};
+  double imu_timeout_sec_{0.5};
+  double imu_heading_kp_{0.30};
+  double imu_heading_kd_{0.1};
+  double imu_turn_kp_{0.3};
+  double imu_max_angular_correction_rps_{0.05};
+  double imu_max_correction_step_rps_{0.015};
+  double imu_correction_interval_sec_{2.0};
+  double imu_straight_angular_threshold_rps_{0.03};
+  double imu_min_wheel_speed_mps_{0.08};
+  double imu_yaw_sign_{-1.0};
+  bool imu_valid_{false};
+  bool imu_straight_active_{false};
+  bool imu_eval_initialized_{false};
+  double imu_yaw_rad_{0.0};
+  double imu_yaw_rate_rps_{0.0};
+  double imu_target_yaw_rad_{0.0};
+  double imu_angular_correction_rps_{0.0};
+  std::chrono::steady_clock::time_point imu_last_rx_tp_{};
+  std::chrono::steady_clock::time_point imu_last_eval_tp_{};
+
+  // Axis1/2 actual-velocity balance controller (straight, pivot, curves).
+  bool wheel_balance_enable_{true};
+  double wheel_balance_kp_{0.20};
+  double wheel_balance_max_correction_mps_{0.010};
+  double wheel_balance_deadband_mps_{0.005};
+  double wheel_balance_min_speed_mps_{0.050};
+  double wheel_balance_angular_threshold_rps_{0.030};
+  double wheel_balance_filter_alpha_{0.15};
+  double wheel_balance_settle_sec_{1.50};
+  double wheel_balance_stable_hold_sec_{1.0};
+  double wheel_balance_release_rate_mps2_{0.005};
+  double wheel_balance_reverse_hold_sec_{0.25};
+  bool wheel_balance_stable_tracking_{false};
+  bool wheel_balance_release_active_{false};
+  bool wheel_balance_reverse_tracking_{false};
+  bool wheel_balance_tick_initialized_{false};
+  std::chrono::steady_clock::time_point wheel_balance_stable_since_{};
+  std::chrono::steady_clock::time_point wheel_balance_reverse_since_{};
+  std::chrono::steady_clock::time_point wheel_balance_last_tick_tp_{};
+  bool wheel_balance_reference_initialized_{false};
+  double wheel_balance_reference_left_mps_{0.0};
+  double wheel_balance_reference_right_mps_{0.0};
+  bool wheel_balance_eval_initialized_{false};
+  std::chrono::steady_clock::time_point wheel_balance_last_eval_tp_{};
+  bool wheel_balance_initialized_{false};
+  double wheel_balance_error_filtered_mps_{0.0};
+  double wheel_balance_correction_mps_{0.0};
+
   double wheel_move_command_min_interval_ms_{100.0};
   double ads_command_settle_extra_ms_{150.0};
   double stop_suppress_velocity_mps_{0.002};
@@ -5455,6 +5949,7 @@ private:
 
   std::size_t status_counter_{0};
 
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr rail_cmd_speed_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr rail_state_sub_;

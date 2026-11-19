@@ -45,6 +45,7 @@ class SimpleRailInfoExtractor(Node):
         self.declare_parameter('stale_sec', 0.40)
         self.declare_parameter('publish_hz', 20.0)
         self.declare_parameter('ema_alpha', 0.40)
+        self.declare_parameter('max_target_jump_px', 100.0)
         self.declare_parameter('angle_trim_ratio', 0.12)
 
         self.enabled = bool(self.get_parameter('enable').value)
@@ -59,6 +60,9 @@ class SimpleRailInfoExtractor(Node):
         self.stale_sec = float(self.get_parameter('stale_sec').value)
         self.publish_hz = float(self.get_parameter('publish_hz').value)
         self.ema_alpha = float(self.get_parameter('ema_alpha').value)
+        self.max_target_jump_px = float(
+            self.get_parameter('max_target_jump_px').value
+        )
         self.angle_trim_ratio = float(
             self.get_parameter('angle_trim_ratio').value
         )
@@ -159,8 +163,9 @@ class SimpleRailInfoExtractor(Node):
         self.last_seen = time.monotonic()
 
     def select_target(self, msg):
-        """화면 중심에 가장 가까운 rail_start를 선택한다."""
+        """첫 검출은 화면 중앙, 이후에는 기존에 잠근 레일을 추적한다."""
         image_center_x = self.img_width / 2.0
+        reference_x = self.cx if self.cx is not None else image_center_x
         candidates = []
 
         for det in msg.detections:
@@ -172,10 +177,17 @@ class SimpleRailInfoExtractor(Node):
                 continue
 
             cx = self.get_bbox_center_x(det)
-            center_error = abs(cx - image_center_x)
+            tracking_error = abs(cx - reference_x)
 
-            # 중심 거리가 우선이고, 같으면 confidence가 높은 검출을 선택한다.
-            candidates.append((center_error, -score, det))
+            # Nav2가 정면에 둔 첫 레일을 잠근다. 주행 중 검출이 옆 레일로
+            # 순간 이동하면 갱신하지 않고 stale timeout으로 안전 정지한다.
+            if (
+                self.cx is not None
+                and tracking_error > self.max_target_jump_px
+            ):
+                continue
+
+            candidates.append((tracking_error, -score, det))
 
         if not candidates:
             return None

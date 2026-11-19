@@ -32,6 +32,11 @@ twist_mux:
         timeout: 0.5
         priority: 30
 
+      rail_approach:
+        topic: /cmd_vel_rail
+        timeout: 0.5
+        priority: 40
+
 #      web_jog:
 #        topic: /cmd_vel_web
 #        timeout: 0.5

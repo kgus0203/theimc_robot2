@@ -1655,28 +1655,36 @@ class BringUp(Node):
         timestamp_now,
         imu_line,
     ):
-        parts = imu_line.split(',')
+        """STM32 IMU,roll,pitch,yaw[,gx,gy,gz].
 
-        if len(parts) < 4:
+        Euler angles are DEGREES. Gyroscope values, when provided, are RAD/S.
+        Missing gyro data must remain explicitly unavailable rather than
+        pretending that measured angular velocity is zero.
+        """
+        parts = [part.strip() for part in imu_line.split(',')]
+        if parts[0] != 'IMU' or len(parts) not in (4, 7):
+            self.get_logger().warning(
+                f'[STM IMU] Unexpected field count: {imu_line}'
+            )
             return
 
         try:
-            roll = float(parts[1])
-            pitch = float(parts[2])
-            yaw = float(parts[3])
+            roll_deg, pitch_deg, yaw_deg = map(float, parts[1:4])
+            gyro = tuple(map(float, parts[4:7])) if len(parts) == 7 else None
         except ValueError:
+            self.get_logger().warning(f'[STM IMU] Invalid numeric data: {imu_line}')
             return
 
-        if not all(
-            math.isfinite(value)
-            for value in (roll, pitch, yaw)
-        ):
+        values = (roll_deg, pitch_deg, yaw_deg) + (gyro or ())
+        if not all(math.isfinite(value) for value in values):
+            self.get_logger().warning(f'[STM IMU] Non-finite data: {imu_line}')
             return
 
+        # quaternion_from_euler() expects RADIANS, while STM32 emits DEGREES.
         quaternion = quaternion_from_euler(
-            roll,
-            pitch,
-            yaw,
+            math.radians(roll_deg),
+            math.radians(pitch_deg),
+            math.radians(yaw_deg),
         )
 
         message = Imu()
@@ -1694,7 +1702,21 @@ class BringUp(Node):
             0.0, 0.0, 0.05,
         ]
 
-        message.angular_velocity_covariance[0] = -1.0
+        if gyro is not None:
+            message.angular_velocity.x = gyro[0]
+            message.angular_velocity.y = gyro[1]
+            message.angular_velocity.z = gyro[2]
+            # Placeholder variance; calibrate against the actual IMU.
+            message.angular_velocity_covariance = [
+                0.01, 0.0, 0.0,
+                0.0, 0.01, 0.0,
+                0.0, 0.0, 0.01,
+            ]
+        else:
+            # ROS convention: -1 means this measurement is not provided.
+            message.angular_velocity_covariance[0] = -1.0
+
+        # STM32's six-field format does NOT include linear acceleration.
         message.linear_acceleration_covariance[0] = -1.0
 
         self.pub_imu.publish(message)

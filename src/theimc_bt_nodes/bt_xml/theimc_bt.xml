@@ -475,7 +475,9 @@
         timeout_sec="20.0"
         tof_stale_sec="0.5"
         enter_confirm_samples="2"
-        on_rail_confirm_samples="3"/>
+        on_rail_confirm_samples="3"
+         power_ready_timeout_sec="12.0"
+         power_feedback_stale_sec="1.0"/>
 
       <DriveUntilRailState
         linear_x="{enter_speed}"
@@ -798,7 +800,9 @@
         timeout_sec="30.0"
         tof_stale_sec="0.5"
         exit_confirm_samples="2"
-        out_rail_confirm_samples="3"/>
+        out_rail_confirm_samples="3"
+         power_ready_timeout_sec="12.0"
+         power_feedback_stale_sec="1.0"/>
 
       <PublishRailCommand command="STOP"/>
 

@@ -146,8 +146,8 @@ def show_help():
         "  • E / F : 바퀴 모터 ON / OFF",
         "  • Y / Z : 레일 모터 ON / OFF",
         "  • O / P : 충전기 ON / OFF",
-        "  • R     : AGV 에러 리셋 (정지 3초 검증 후 READY)",
-        "  • N     : Reset 후 Power 복구 승인",
+        "  • R     : AGV 에러 리셋 즉시 요청 (응답/READY 대기 없음)",
+        "  • N     : 드라이버가 별도 승인 요구 시 수동 Power 복구 승인",
         "  • V     : TwinCAT 즉시 Restart (모터 상태 검사 없음)",
     ]
     individual = [
@@ -398,6 +398,26 @@ def _call_trigger_service(node, service_name, timeout=8.0):
     finally:
         node.destroy_client(client)
 
+def _wait_for_agv_ready(node, agv_status, timeout=15.0):
+    """Wait until agv_node explicitly reports READY."""
+    start = time.monotonic()
+
+    while rclpy.ok() and time.monotonic() - start < timeout:
+        rclpy.spin_once(node, timeout_sec=0.1)
+
+        state = str(agv_status.get('state', '')).upper().strip()
+
+        if state.startswith('AGV ADS DRIVER: READY'):
+            print(f'\n[RECOVERY][READY] {agv_status.get("state", "")}')
+            return True
+
+        time.sleep(0.05)
+
+    print(
+        '\n[RECOVERY][TIMEOUT] AGV READY를 확인하지 못했습니다.\n'
+        f'[RECOVERY] 마지막 상태: {agv_status.get("state", "UNKNOWN")}'
+    )
+    return False
 
 def _print_axis_snapshot(snapshot_ref):
     snapshot = snapshot_ref.get('data')
@@ -415,15 +435,105 @@ def twincat_maintenance_menu(node, snapshot_ref, pub_wheel,
                              agv_status=None, direct_restart=False):
     """V directly requests TwinCAT restart without PLC axis-state prechecks."""
     if direct_restart:
-        # Maintenance only: TwinCAT Runtime restart is NOT an emergency stop.
-        # Do not wait for velocity=0, Power OFF, bNotMoving or HasJob clearance.
-        # Stop the robot and secure the work area independently before pressing V.
         print('\n[TWINCAT] V -> 즉시 Restart 요청 (모터 상태 검사 없음)')
-        rc = _run_twincat_tool('restart', '--confirmed', timeout=90)
-        if rc == 0:
-            print('[TWINCAT][OK] Restart 명령 완료. ADS 재연결 및 PLC READY 확인 후 운전하세요.')
+
+        rc = _run_twincat_tool(
+            'restart',
+            '--confirmed',
+            timeout=90
+        )
+
+        if rc != 0:
+            print(
+                '[TWINCAT][FAIL] Restart 실패/불확실. '
+                'PLC Runtime 상태를 확인하세요.'
+            )
+            return
+
+        print('[TWINCAT][OK] Restart 명령 완료.')
+        print('[RECOVERY] ADS 재연결 대기 중...')
+
+        # restart 중 밀려 있던 /agv_status callback 처리
+        reconnect_start = time.monotonic()
+        reconnect_seen = False
+
+        while rclpy.ok() and time.monotonic() - reconnect_start < 10.0:
+            rclpy.spin_once(node, timeout_sec=0.1)
+
+            state = str(
+                agv_status.get('state', '')
+            ).upper().strip()
+
+            if (
+                'ADS RECONNECTED' in state
+                or 'WAITING OPERATOR APPROVAL' in state
+                or 'READY' in state
+            ):
+                reconnect_seen = True
+                print(
+                    f'[RECOVERY] AGV 상태 확인: '
+                    f'{agv_status.get("state", "")}'
+                )
+                break
+
+            time.sleep(0.05)
+
+        if not reconnect_seen:
+            print(
+                '[RECOVERY][WARN] ADS 재연결 상태 메시지를 '
+                '10초 내 확인하지 못했습니다.'
+            )
+            print(
+                f'[RECOVERY] 마지막 상태: '
+                f'{agv_status.get("state", "UNKNOWN")}'
+            )
+            return
+
+        # 이미 READY라면 승인 불필요
+        state = str(
+            agv_status.get('state', '')
+        ).upper().strip()
+
+        if state.startswith('AGV ADS DRIVER: READY'):
+            print('[RECOVERY][READY] 이미 AGV READY 상태입니다.')
+            return
+
+        # ADS reconnect recovery 승인
+        print(
+            '[RECOVERY] /agv/approve_ads_recovery 호출...'
+        )
+
+        approved = _call_trigger_service(
+            node,
+            APPROVE_ADS_SERVICE,
+            timeout=10.0
+        )
+
+        if not approved:
+            print(
+                '[RECOVERY][FAIL] ADS recovery 승인 실패.'
+            )
+            return
+
+        print(
+            '[RECOVERY] 승인 완료. AGV READY 대기 중...'
+        )
+
+        if _wait_for_agv_ready(
+            node,
+            agv_status,
+            timeout=15.0
+        ):
+            print(
+                '[RECOVERY][OK] AGV READY. '
+                '새로운 주행 명령을 입력하세요.'
+            )
         else:
-            print('[TWINCAT][FAIL] Restart 실패/불확실. PLC Runtime 상태를 확인하세요.')
+            print(
+                '[RECOVERY][WARN] READY 전환 실패. '
+                '/agv/axis_diagnostics를 확인하세요.'
+            )
+
         return
     else:
         print('\n' + '=' * 58)
@@ -535,7 +645,7 @@ def main():
         agv_status['last_rx'] = time.monotonic()
         # Positively identify READY, rather than maintaining a fragile
         # blacklist of future fault/recovery state names.
-        is_ready = state.startswith('AGV ADS DRIVER: READY /')
+        is_ready = state.startswith('AGV ADS DRIVER: READY')
         if not is_ready and not agv_status['inhibited']:
             agv_status['clear_pending'] = True
         agv_status['inhibited'] = not is_ready
@@ -559,6 +669,21 @@ def main():
 
     # AGV fault reset service.
     reset_faults_client = node.create_client(Trigger, RESET_FAULTS_SERVICE)
+    reset_future_ref = {'future': None}
+
+    def on_reset_complete(future):
+        # Invoked on ROS spinning, never block the keyboard waiting for READY.
+        reset_future_ref['future'] = None
+        try:
+            response = future.result()
+            if response is None:
+                print('\n[RESET][ERROR] Empty response from reset service.', flush=True)
+            elif response.success:
+                print(f'\n[RESET][ACK] {response.message}', flush=True)
+            else:
+                print(f'\n[RESET][FAIL] {response.message}', flush=True)
+        except Exception as exc:
+            print(f'\n[RESET][ERROR] Service call failed: {exc}', flush=True)
 
     # Manual motor power services.
     wheel_power_client = node.create_client(SetBool, WHEEL_POWER_SERVICE)
@@ -780,35 +905,16 @@ def main():
                 # request Reset without StopMove, then verify actual standstill.
                 print("\n[RESET] Local targets cleared (no STOP published). Calling /agv/reset_faults ...")
 
-                if not reset_faults_client.wait_for_service(timeout_sec=1.0):
-                    print("[RESET][ERROR] /agv/reset_faults service is not available.")
+                if reset_future_ref['future'] is not None and not reset_future_ref['future'].done():
+                    print('[RESET] 이미 Reset 요청이 진행 중입니다.')
+                elif not reset_faults_client.service_is_ready():
+                    print('[RESET][ERROR] /agv/reset_faults service is not available.')
                 else:
-                    request = Trigger.Request()
-                    future = reset_faults_client.call_async(request)
-
-                    # The driver reset sequence can wait for physical stop/fault clear,
-                    # so allow enough time for the service callback to finish.
-                    rclpy.spin_until_future_complete(
-                        node,
-                        future,
-                        timeout_sec=15.0
-                    )
-
-                    if not future.done():
-                        print("[RESET][ERROR] Reset service timed out after 15 sec.")
-                    else:
-                        try:
-                            response = future.result()
-                            if response is None:
-                                print("[RESET][ERROR] Empty response from reset service.")
-                            elif response.success:
-                                print(f"[RESET][ACK / NOT READY YET] {response.message}")
-                                print("[RESET] PLC 정지 및 FB idle 3초 검증 후 자동 READY (전원 구성 정상 시).")
-                                print("[RESET] Power OFF 축은 N 승인 필요. 시간 초과시 자동 TwinCAT Restart 없음.")
-                            else:
-                                print(f"[RESET][FAIL] {response.message}")
-                        except Exception as exc:
-                            print(f"[RESET][ERROR] Service call failed: {exc}")
+                    future = reset_faults_client.call_async(Trigger.Request())
+                    reset_future_ref['future'] = future
+                    future.add_done_callback(on_reset_complete)
+                    print('[RESET] 리셋 요청 전송 완료. 키보드 조작을 계속할 수 있습니다.')
+                    print('[RESET] 실제 구동 허용은 AGV 드라이버의 안전 상태에 따릅니다.')
 
                 print_vels(
                     target_linear_velocity,

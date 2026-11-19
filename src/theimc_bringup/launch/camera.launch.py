@@ -52,11 +52,10 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 {
-                    # rail_start 검출이 사라지면
-                    # 0.5초 안에 has_rail=false
-                    'hold_sec': 0.5,
-
-                    'ema_alpha_bbox': 0.35,
+                    # 기존 레일을 잠그고 옆 레일로 순간 전환하지 않는다.
+                    'stale_sec': 0.40,
+                    'ema_alpha': 0.25,
+                    'max_target_jump_px': 100.0,
                 }
             ],
         ),
@@ -72,18 +71,19 @@ def generate_launch_description():
                     # 레일 인식 결과
                     'rail_info_topic': '/rail_info',
 
-                    # 로봇 속도 명령
-                    'cmd_vel_topic': '/cmd_vel',
+                    # 레일 전용 mux 입력. /cmd_vel에는 twist_mux만 출력한다.
+                    'cmd_vel_topic': '/cmd_vel_rail',
 
                     # 제어 주기
                     'control_rate_hz': 20.0,
 
                     # ALIGN 제자리 회전 속도
-                    'angular_speed': 0.08,
+                    'turn_speed': 0.035,
 
-                    # 짧은 전진
-                    'pulse_linear_speed': 0.08,
-                    'pulse_forward_sec': 0.2,
+                    # 연속 전진 속도
+                    'forward_speed': 0.07,
+                    'min_forward_speed': 0.03,
+                    'min_rail_confidence': 0.45,
 
                     # rail_info timeout
                     'rail_timeout_sec': 0.5,

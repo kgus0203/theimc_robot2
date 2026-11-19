@@ -54,9 +54,10 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 {
-                    # rail_start 검출이 사라지면 0.5초 안에 has_rail=false로 전환
-                    'hold_sec': 0.5,
-                    'ema_alpha_bbox': 0.35,
+                    # 기존 레일을 잠그고 옆 레일로 순간 전환하지 않는다.
+                    'stale_sec': 0.40,
+                    'ema_alpha': 0.25,
+                    'max_target_jump_px': 100.0,
                 }
             ],
         ),
@@ -71,20 +72,19 @@ def generate_launch_description():
                     # rail_info_extractor_node 같은 노드가 이 토픽으로 RailInfo 메시지를 publish해야 함
                     'rail_info_topic': '/rail_info',
 
-                    # 로봇 속도 명령을 내보낼 토픽
-                    # 지금은 바로 /cmd_vel로 보내므로 실제 로봇이 바로 움직일 수 있음
-                    # Nav2와 같이 쓸 경우에는 /cmd_vel_rail로 두고 twist_mux를 거쳐 /cmd_vel로 합치는 게 더 안전함
-                    'cmd_vel_topic': '/cmd_vel',
+                    # 레일 전용 mux 입력. /cmd_vel에는 twist_mux만 출력한다.
+                    'cmd_vel_topic': '/cmd_vel_rail',
 
                     # 제어 주기
                     'control_rate_hz': 20.0,
 
                     # ALIGN 상태에서 제자리 회전 속도
-                    'angular_speed': 0.08,
+                    'turn_speed': 0.035,
 
-                    # PULSE_FORWARD 상태: 짧게 전진
-                    'pulse_linear_speed': 0.08,
-                    'pulse_forward_sec': 0.2,
+                    # 정렬 완료 후 연속 전진 속도
+                    'forward_speed': 0.07,
+                    'min_forward_speed': 0.03,
+                    'min_rail_confidence': 0.45,
 
                     # rail_info가 이 시간 이상 갱신되지 않으면 즉시 정지
                     'rail_timeout_sec': 0.5,

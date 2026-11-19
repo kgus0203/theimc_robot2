@@ -18,9 +18,8 @@ class SimpleRailApproachAction(Node):
     단순 레일 접근 제어.
 
     FAR / MIDDLE:
-        중심이 많이 틀리면 짧게 중심 보정
-        각도가 많이 틀리면 짧게 각도 보정
-        둘 다 허용 범위이면 짧게 전진
+        최신 중심/각도 오차로 전진과 회전을 동시에 연속 제어
+        조향량이 클수록 전진 속도를 낮춰 캐스터가 자연스럽게 따라오게 함
 
     NEAR:
         Action goal의 x_tolerance / angle_tolerance로 최종 판정
@@ -66,17 +65,15 @@ class SimpleRailApproachAction(Node):
         self.declare_parameter('target_x_error', -0.047)
         self.declare_parameter('target_angle_deg', 0.0)
 
-        self.declare_parameter('turn_speed', 0.08)
-        self.declare_parameter('forward_speed', 0.08)
+        self.declare_parameter('turn_speed', 0.035)
+        self.declare_parameter('forward_speed', 0.07)
+        self.declare_parameter('min_forward_speed', 0.03)
+        self.declare_parameter('min_rail_confidence', 0.45)
         self.declare_parameter('backup_speed', 0.05)
         self.declare_parameter('backup_angle_tolerance', 1.0)
 
-        self.declare_parameter('turn_pulse_sec', 0.08)
-        self.declare_parameter('far_forward_sec', 0.50)
-        self.declare_parameter('middle_forward_sec', 0.25)
         self.declare_parameter('success_hold_sec', 0.30)
         self.declare_parameter('near_fail_hold_sec', 0.30)
-        self.declare_parameter('middle_align_timeout_sec', 2.0)
 
         self.perception_enable_topic = str(
             self.get_parameter('perception_enable_topic').value
@@ -113,6 +110,12 @@ class SimpleRailApproachAction(Node):
         self.forward_speed = float(
             self.get_parameter('forward_speed').value
         )
+        self.min_forward_speed = float(
+            self.get_parameter('min_forward_speed').value
+        )
+        self.min_rail_confidence = float(
+            self.get_parameter('min_rail_confidence').value
+        )
         self.backup_speed = float(
             self.get_parameter('backup_speed').value
         )
@@ -120,23 +123,11 @@ class SimpleRailApproachAction(Node):
             self.get_parameter('backup_angle_tolerance').value
         )
 
-        self.turn_pulse_sec = float(
-            self.get_parameter('turn_pulse_sec').value
-        )
-        self.far_forward_sec = float(
-            self.get_parameter('far_forward_sec').value
-        )
-        self.middle_forward_sec = float(
-            self.get_parameter('middle_forward_sec').value
-        )
         self.success_hold_sec = float(
             self.get_parameter('success_hold_sec').value
         )
         self.near_fail_hold_sec = float(
             self.get_parameter('near_fail_hold_sec').value
-        )
-        self.middle_align_timeout_sec = float(
-            self.get_parameter('middle_align_timeout_sec').value
         )
 
         self.latest_rail = None
@@ -240,6 +231,10 @@ class SimpleRailApproachAction(Node):
         if not bool(getattr(self.latest_rail, 'has_rail', False)):
             return None
 
+        confidence = float(getattr(self.latest_rail, 'confidence', 0.0))
+        if confidence < self.min_rail_confidence:
+            return None
+
         return self.latest_rail
 
     def extract(self, rail):
@@ -318,53 +313,6 @@ class SimpleRailApproachAction(Node):
         if not rclpy.ok():
             return 'shutdown'
         return None
-
-    def pulse(
-        self,
-        goal_handle,
-        deadline,
-        linear_x=0.0,
-        angular_z=0.0,
-        duration=0.0,
-        stop_on_near=False,
-    ):
-        cmd = Twist()
-        cmd.linear.x = float(linear_x)
-        cmd.angular.z = float(angular_z)
-
-        period = 1.0 / self.control_rate_hz
-        end_time = time.monotonic() + duration
-
-        while time.monotonic() < end_time:
-            terminal = self.check_terminal(goal_handle, deadline)
-            if terminal is not None:
-                self.stop_robot()
-                return terminal
-
-            rail = self.get_rail()
-            if rail is None:
-                self.stop_robot()
-                return 'rail_lost'
-
-            x_error, angle_error, distance = self.extract(rail)
-            state = 'FORWARD' if linear_x > 0.0 else 'ALIGN'
-            self.publish_feedback(
-                goal_handle,
-                state,
-                x_error,
-                angle_error,
-                distance,
-            )
-
-            if stop_on_near and distance == 'near':
-                self.stop_robot()
-                return 'near'
-
-            self.cmd_pub.publish(cmd)
-            time.sleep(period)
-
-        self.stop_robot()
-        return 'ok'
 
     def backup_until_far(self, goal_handle, deadline):
         cmd = Twist()
@@ -489,7 +437,6 @@ class SimpleRailApproachAction(Node):
 
         success_since = None
         fail_since = None
-        middle_align_since = None
 
         result = RailApproach.Result()
         self.set_perception(True)
@@ -521,14 +468,12 @@ class SimpleRailApproachAction(Node):
                     )
                     success_since = None
                     fail_since = None
-                    middle_align_since = None
                     time.sleep(period)
                     continue
 
                 x_error, angle_error, distance = self.extract(rail)
 
                 if distance == 'near':
-                    middle_align_since = None
                     self.stop_robot()
                     self.publish_feedback(
                         goal_handle,
@@ -605,113 +550,59 @@ class SimpleRailApproachAction(Node):
                     or abs(angle_error) > angle_limit
                 )
 
-                if (
-                    distance == 'middle'
-                    and needs_alignment
-                    and allow_reverse
-                ):
-                    if middle_align_since is None:
-                        middle_align_since = time.monotonic()
-                    elif (
-                        time.monotonic() - middle_align_since
-                        >= self.middle_align_timeout_sec
-                    ):
-                        status = self.backup_until_far(
-                            goal_handle,
-                            deadline,
+                # ArUco 제어처럼 중심 오차와 각도 오차를 한 조향값으로
+                # 합친다. 기존 제어의 부호 규칙은 그대로 유지한다.
+                center_term = max(
+                    -1.0,
+                    min(1.0, -x_error / max(x_limit, 1.0e-6)),
+                )
+                angle_term = max(
+                    -1.0,
+                    min(1.0, angle_error / max(angle_limit, 1.0e-6)),
+                )
+                # Nav2가 이미 정면에 접근하므로 큰 회전보다 중심 추종을
+                # 우선하고, 검출 각도는 미세 보정으로만 사용한다.
+                normalized_steer = 0.70 * center_term + 0.30 * angle_term
+
+                if needs_alignment:
+                    # 두 오차가 서로 상쇄되어 조향이 사라지는 경우에는
+                    # 허용 범위를 더 크게 벗어난 오차의 방향을 따른다.
+                    if abs(normalized_steer) < 0.25:
+                        normalized_steer = (
+                            center_term
+                            if abs(center_term) >= abs(angle_term)
+                            else angle_term
                         )
-                        if status == 'manual_success':
-                            return self.finish_manual_success(
-                                goal_handle,
-                                result,
-                            )
-                        if status != 'ok':
-                            return self.finish_error(
-                                goal_handle,
-                                result,
-                                status,
-                            )
-
-                        middle_align_since = None
-                        continue
+                    target_angular = self.turn_speed * normalized_steer
+                    state = 'GUIDED_FORWARD'
                 else:
-                    middle_align_since = None
+                    target_angular = 0.0
+                    state = 'FORWARD'
 
-                if abs(x_error) > x_limit:
-                    angular = (
-                        -self.turn_speed
-                        if x_error > 0.0
-                        else self.turn_speed
-                    )
-                    self.publish_feedback(
-                        goal_handle,
-                        'ALIGN_CENTER',
-                        x_error,
-                        angle_error,
-                        distance,
-                    )
-                    status = self.pulse(
-                        goal_handle,
-                        deadline,
-                        angular_z=angular,
-                        duration=self.turn_pulse_sec,
-                    )
+                # 최대 조향일 때도 절반 속도로 전진해 캐스터 방향을 잡는다.
+                steer_ratio = (
+                    min(1.0, abs(target_angular) / self.turn_speed)
+                    if self.turn_speed > 0.0
+                    else 0.0
+                )
+                target_linear = max(
+                    self.min_forward_speed,
+                    self.forward_speed * (1.0 - 0.6 * steer_ratio),
+                )
 
-                elif abs(angle_error) > angle_limit:
-                    angular = (
-                        self.turn_speed
-                        if angle_error > 0.0
-                        else -self.turn_speed
-                    )
-                    self.publish_feedback(
-                        goal_handle,
-                        'ALIGN_ANGLE',
-                        x_error,
-                        angle_error,
-                        distance,
-                    )
-                    status = self.pulse(
-                        goal_handle,
-                        deadline,
-                        angular_z=angular,
-                        duration=self.turn_pulse_sec,
-                    )
-
-                else:
-                    forward_sec = (
-                        self.far_forward_sec
-                        if distance == 'far'
-                        else self.middle_forward_sec
-                    )
-                    self.publish_feedback(
-                        goal_handle,
-                        'FORWARD',
-                        x_error,
-                        angle_error,
-                        distance,
-                    )
-                    status = self.pulse(
-                        goal_handle,
-                        deadline,
-                        linear_x=self.forward_speed,
-                        duration=forward_sec,
-                        stop_on_near=True,
-                    )
-
-                if status == 'manual_success':
-                    return self.finish_manual_success(
-                        goal_handle,
-                        result,
-                    )
-
-                if status in ('canceled', 'timeout', 'shutdown'):
-                    return self.finish_error(
-                        goal_handle,
-                        result,
-                        status,
-                    )
-
-                # rail_lost, near, ok 모두 정지 후 처음부터 다시 판단한다.
+                self.publish_feedback(
+                    goal_handle,
+                    state,
+                    x_error,
+                    angle_error,
+                    distance,
+                )
+                cmd = Twist()
+                cmd.linear.x = target_linear
+                cmd.angular.z = target_angular
+                self.cmd_pub.publish(cmd)
+                time.sleep(period)
+                continue
 
             return self.finish_error(
                 goal_handle,
