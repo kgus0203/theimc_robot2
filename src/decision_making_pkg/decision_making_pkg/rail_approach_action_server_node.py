@@ -67,13 +67,17 @@ class SimpleRailApproachAction(Node):
 
         self.declare_parameter('turn_speed', 0.035)
         self.declare_parameter('forward_speed', 0.07)
-        self.declare_parameter('min_forward_speed', 0.03)
+        self.declare_parameter('min_forward_speed', 0.05)
         self.declare_parameter('min_rail_confidence', 0.45)
+        # 접근 제어는 최종 성공 허용치보다 더 엄격하게 맞춘다.
+        self.declare_parameter('control_tolerance_ratio', 0.65)
+        self.declare_parameter('min_control_x_tolerance', 0.06)
+        self.declare_parameter('min_control_angle_tolerance', 1.5)
         self.declare_parameter('backup_speed', 0.05)
         self.declare_parameter('backup_angle_tolerance', 1.0)
 
         self.declare_parameter('success_hold_sec', 0.30)
-        self.declare_parameter('near_fail_hold_sec', 0.30)
+        self.declare_parameter('near_fail_hold_sec', 1.00)
 
         self.perception_enable_topic = str(
             self.get_parameter('perception_enable_topic').value
@@ -115,6 +119,15 @@ class SimpleRailApproachAction(Node):
         )
         self.min_rail_confidence = float(
             self.get_parameter('min_rail_confidence').value
+        )
+        self.control_tolerance_ratio = float(
+            self.get_parameter('control_tolerance_ratio').value
+        )
+        self.min_control_x_tolerance = float(
+            self.get_parameter('min_control_x_tolerance').value
+        )
+        self.min_control_angle_tolerance = float(
+            self.get_parameter('min_control_angle_tolerance').value
         )
         self.backup_speed = float(
             self.get_parameter('backup_speed').value
@@ -206,12 +219,14 @@ class SimpleRailApproachAction(Node):
     def goal_callback(self, request):
         with self.goal_lock:
             if self.goal_active:
+                self.get_logger().warn(
+                    '[SIMPLE_RAIL_ACTION] goal rejected: '
+                    'another goal is active'
+                )
                 return GoalResponse.REJECT
-            self.goal_active = True
-            self.manual_success_event.clear()
 
         self.get_logger().info(
-            '[SIMPLE_RAIL_ACTION] goal accepted '
+            '[SIMPLE_RAIL_ACTION] goal request accepted '
             f'x_tol={request.x_tolerance:.3f}, '
             f'angle_tol={request.angle_tolerance:.3f}'
         )
@@ -411,6 +426,7 @@ class SimpleRailApproachAction(Node):
         return result
 
     def execute_callback(self, goal_handle):
+        result = RailApproach.Result()
         request = goal_handle.request
 
         timeout_sec = (
@@ -438,10 +454,24 @@ class SimpleRailApproachAction(Node):
         success_since = None
         fail_since = None
 
-        result = RailApproach.Result()
-        self.set_perception(True)
+        # goal_callback에서는 실행 상태를 선점하지 않는다. 요청이 수락된 뒤
+        # 실행 콜백이 호출되지 않는 경우에도 goal_active가 고착되지 않도록
+        # 실제 제어가 시작되는 이 지점에서만 활성 상태를 잡는다.
+        with self.goal_lock:
+            busy = self.goal_active
+            if not busy:
+                self.goal_active = True
+                self.manual_success_event.clear()
+
+        if busy:
+            goal_handle.abort()
+            result.success = False
+            result.reason = 'another_goal_active'
+            return result
 
         try:
+            self.set_perception(True)
+
             while rclpy.ok():
                 terminal = self.check_terminal(goal_handle, deadline)
                 if terminal == 'manual_success':
@@ -473,6 +503,54 @@ class SimpleRailApproachAction(Node):
 
                 x_error, angle_error, distance = self.extract(rail)
 
+                x_limit, angle_limit = self.approach_limits(distance)
+
+                # Action goal tolerance는 최종 성공 판정값이다. 접근 중에는
+                # 이보다 엄격한 값을 사용해 FINAL_CHECK 전에 여유를 확보한다.
+                x_limit = min(
+                    x_limit,
+                    max(
+                        self.min_control_x_tolerance,
+                        x_tolerance * self.control_tolerance_ratio,
+                    ),
+                )
+                angle_limit = min(
+                    angle_limit,
+                    max(
+                        self.min_control_angle_tolerance,
+                        angle_tolerance * self.control_tolerance_ratio,
+                    ),
+                )
+
+                prefinal_x_aligned = abs(x_error) <= x_limit
+
+                # NEAR에서는 더 이상 전진하지 않는다. 레일을 카메라 시야에서
+                # 잃지 않도록 x 오차만 저속 제자리 회전으로 맞춘다.
+                if distance == 'near' and not prefinal_x_aligned:
+                    success_since = None
+                    fail_since = None
+
+                    center_term = max(
+                        -1.0,
+                        min(1.0, -x_error / max(x_limit, 1.0e-6)),
+                    )
+
+                    self.publish_feedback(
+                        goal_handle,
+                        'FINAL_ALIGN_X',
+                        x_error,
+                        angle_error,
+                        distance,
+                    )
+                    cmd = Twist()
+                    cmd.linear.x = 0.0
+                    cmd.angular.z = self.turn_speed * center_term
+                    self.cmd_pub.publish(cmd)
+                    time.sleep(period)
+                    continue
+
+                # x 오차가 제어 허용치 안에 들어온 뒤 완전히 정지한 상태로
+                # 액션 목표의 x/angle tolerance를 최종 판정한다.
                 if distance == 'near':
                     self.stop_robot()
                     self.publish_feedback(
@@ -543,8 +621,6 @@ class SimpleRailApproachAction(Node):
                 success_since = None
                 fail_since = None
 
-                x_limit, angle_limit = self.approach_limits(distance)
-
                 needs_alignment = (
                     abs(x_error) > x_limit
                     or abs(angle_error) > angle_limit
@@ -585,9 +661,18 @@ class SimpleRailApproachAction(Node):
                     if self.turn_speed > 0.0
                     else 0.0
                 )
+                # MIDDLE에서는 NEAR 판정 전에 미세 조정할 시간을 확보한다.
+                distance_max_linear = (
+                    self.forward_speed
+                    if distance == 'far'
+                    else max(
+                        self.min_forward_speed,
+                        self.forward_speed * 0.75,
+                    )
+                )
                 target_linear = max(
                     self.min_forward_speed,
-                    self.forward_speed * (1.0 - 0.6 * steer_ratio),
+                    distance_max_linear * (1.0 - 0.6 * steer_ratio),
                 )
 
                 self.publish_feedback(
@@ -611,13 +696,16 @@ class SimpleRailApproachAction(Node):
             )
 
         finally:
-            self.stop_robot()
-            self.set_perception(False)
+            try:
+                self.stop_robot()
+                self.set_perception(False)
+            finally:
+                # 정지/퍼셉션 publisher에서 예외가 발생하더라도 다음 goal을
+                # 영구 거절하지 않도록 활성 상태 해제를 반드시 수행한다.
+                self.manual_success_event.clear()
 
-            self.manual_success_event.clear()
-
-            with self.goal_lock:
-                self.goal_active = False
+                with self.goal_lock:
+                    self.goal_active = False
 
 
 def main(args=None):

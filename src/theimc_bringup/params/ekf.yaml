@@ -1,6 +1,6 @@
 ekf_filter_node:
   ros__parameters:
-    frequency: 10.0
+    frequency: 30.0
     sensor_timeout: 0.3
     two_d_mode: true
 
@@ -15,23 +15,22 @@ ekf_filter_node:
     world_frame: odom
 
     transform_time_offset: 0.03
-    transform_timeout: 0.1
+    transform_timeout: 0.02
 
     # State vector order:
-    
     # [위치 x, 위치 y, 위치 z,
     #  자세 roll, 자세 pitch, 자세 yaw,
     #  선속도 vx, 선속도 vy, 선속도 vz,
     #  각속도 vroll, 각속도 vpitch, 각속도 vyaw,
     #  선가속도 ax, 선가속도 ay, 선가속도 az]
 
-    # 1) Wheel odom: 속도 정보만 사용
+    # 1) Wheel odom: 직진 속도(vx)만 사용
     odom0: /wheel/odom
     odom0_config:
       [false, false, false,
        false, false, false,
        true,  false, false,
-       false, false, true,
+       false, false, false,
        false, false, false]
     odom0_differential: false
     odom0_relative: false
@@ -41,7 +40,7 @@ ekf_filter_node:
     # 2) Camera odom은 RTAB odometry를 다시 사용할 때 활성화
     # odom1: /camera/odom
 
-    # 3) IMU는 z축 각속도만 사용
+    # 3) IMU는 z축 각속도만 사용 (유효한 gyro 및 TF 필수)
     imu0: /imu
     imu0_config:
       [false, false, false,
@@ -52,5 +51,6 @@ ekf_filter_node:
     imu0_differential: false
     imu0_relative: false
     imu0_queue_size: 20
-    imu0_twist_rejection_threshold: 1.0
+    imu0_twist_rejection_threshold: 5.0
     imu0_remove_gravitational_acceleration: false
+

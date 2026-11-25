@@ -22,7 +22,7 @@ else:
     import termios
     import tty
 
-MAX_LIN_VEL = 1.0
+MAX_LIN_VEL = 0.5
 MAX_ANG_VEL = 1.0
 MAX_RAIL_VEL = 0.5
 
@@ -148,14 +148,16 @@ def show_help():
         "  • O / P : 충전기 ON / OFF",
         "  • R     : AGV 에러 리셋 즉시 요청 (응답/READY 대기 없음)",
         "  • N     : 드라이버가 별도 승인 요구 시 수동 Power 복구 승인",
-        "  • V     : TwinCAT 즉시 Restart (모터 상태 검사 없음)",
+        "  • V     : TwinCAT Restart (정지/Power OFF 확인)",
     ]
     individual = [
         "🔗 바퀴·레일 독립 제어",
         "  • W/A/S/D/X : 바퀴만 제어",
         "  • 1/2/3/T/B/G : 레일만 제어",
         "  • M / Space : 양쪽 모두 정지",
-        "  • U/J/I/K/H/L : 사용 안 함",
+        "  • U     : Nav2 제어권 반환 (정지 및 목표 취소 확인)",
+        "  • J     : ADS 재연결 수동 승인",
+        "  • I/K/H/L : 사용 안 함",
     ]
     rail = [
         "🚊 레일 미세 속도 (Rail Speed)",
@@ -178,7 +180,7 @@ def show_help():
         " [?] 단축키 다시 보기  |  [Ctrl+C] 종료",
         " [참고] 바퀴+레일 동시 구동은 AGV의 allow_simultaneous_drive=true 및 두 모터 Power ON 필요",
         " [R] 리셋 직전 STOP 미발행 (PLC 오류 시 정지 동작은 별도 보장 필요)",
-        " [V] 즉시 TwinCAT Runtime Restart: 모터 상태/속도 검사 및 입력 확인 없음",
+        " [V] TwinCAT Runtime Restart: 최신 PLC 정지 및 Power OFF 확인 필수",
         " [주의] Runtime Restart는 비상정지가 아닙니다. 실제 로봇 정지 및 위험구역 안전 확보 후 V 사용",
         "=" * rule_width,
         "",
@@ -433,120 +435,13 @@ def _print_axis_snapshot(snapshot_ref):
 def twincat_maintenance_menu(node, snapshot_ref, pub_wheel,
                              pub_rail_command, pub_rail_speed_setpoint,
                              agv_status=None, direct_restart=False):
-    """V directly requests TwinCAT restart without PLC axis-state prechecks."""
+    """Restart only after verified PLC standstill and power OFF."""
     if direct_restart:
-        print('\n[TWINCAT] V -> 즉시 Restart 요청 (모터 상태 검사 없음)')
-
-        rc = _run_twincat_tool(
-            'restart',
-            '--confirmed',
-            timeout=90
-        )
-
-        if rc != 0:
-            print(
-                '[TWINCAT][FAIL] Restart 실패/불확실. '
-                'PLC Runtime 상태를 확인하세요.'
-            )
-            return
-
-        print('[TWINCAT][OK] Restart 명령 완료.')
-        print('[RECOVERY] ADS 재연결 대기 중...')
-
-        # restart 중 밀려 있던 /agv_status callback 처리
-        reconnect_start = time.monotonic()
-        reconnect_seen = False
-
-        while rclpy.ok() and time.monotonic() - reconnect_start < 10.0:
-            rclpy.spin_once(node, timeout_sec=0.1)
-
-            state = str(
-                agv_status.get('state', '')
-            ).upper().strip()
-
-            if (
-                'ADS RECONNECTED' in state
-                or 'WAITING OPERATOR APPROVAL' in state
-                or 'READY' in state
-            ):
-                reconnect_seen = True
-                print(
-                    f'[RECOVERY] AGV 상태 확인: '
-                    f'{agv_status.get("state", "")}'
-                )
-                break
-
-            time.sleep(0.05)
-
-        if not reconnect_seen:
-            print(
-                '[RECOVERY][WARN] ADS 재연결 상태 메시지를 '
-                '10초 내 확인하지 못했습니다.'
-            )
-            print(
-                f'[RECOVERY] 마지막 상태: '
-                f'{agv_status.get("state", "UNKNOWN")}'
-            )
-            return
-
-        # 이미 READY라면 승인 불필요
-        state = str(
-            agv_status.get('state', '')
-        ).upper().strip()
-
-        if state.startswith('AGV ADS DRIVER: READY'):
-            print('[RECOVERY][READY] 이미 AGV READY 상태입니다.')
-            return
-
-        # ADS reconnect recovery 승인
-        print(
-            '[RECOVERY] /agv/approve_ads_recovery 호출...'
-        )
-
-        approved = _call_trigger_service(
-            node,
-            APPROVE_ADS_SERVICE,
-            timeout=10.0
-        )
-
-        if not approved:
-            print(
-                '[RECOVERY][FAIL] ADS recovery 승인 실패.'
-            )
-            return
-
-        print(
-            '[RECOVERY] 승인 완료. AGV READY 대기 중...'
-        )
-
-        if _wait_for_agv_ready(
-            node,
-            agv_status,
-            timeout=15.0
-        ):
-            print(
-                '[RECOVERY][OK] AGV READY. '
-                '새로운 주행 명령을 입력하세요.'
-            )
-        else:
-            print(
-                '[RECOVERY][WARN] READY 전환 실패. '
-                '/agv/axis_diagnostics를 확인하세요.'
-            )
-
-        return
+        print('\n[TWINCAT] Restart: fresh PLC standstill and all axes OFF required.')
+        choice = '2'
     else:
-        print('\n' + '=' * 58)
-        print('Beckhoff TwinCAT / AGV 오류 복구 (V)')
-        print('1: TwinCAT 상태 조회 (읽기)')
-        print('2: TwinCAT Runtime 재시작 (기존 엄격한 안전 조건 유지)')
-        print('3: AGV/PLC 오류 및 잠금 원인 진단 (읽기)')
-        print('4: 잔류 NC Job 복구 요청 (실제 정지 확인 후)')
-        print('5: ADS 재연결 이후 운영자 승인')
-        print('6: Reset 이후 Power 복구 승인')
-        print('7: 오류 Reset 요청 (정지 확인 후)')
-        print('0: 취소')
-        print('=' * 58)
+        print('\n1: 상태 조회 / 2: Restart / 3: 진단 / 4: 잔류 Job 복구')
+        print('5: ADS 승인 / 6: Power 승인 / 7: Reset / 0: 취소')
         choice = input('선택: ').strip()
     if choice in ('0', ''):
         return
@@ -636,6 +531,7 @@ def main():
     # (including ADS RECONNECTED / WAITING OPERATOR APPROVAL) block motion.
     agv_status = {'inhibited': True, 'clear_pending': False,
                   'last_rx': 0.0, 'state': 'WAITING FOR AGV STATUS'}
+    reset_watch = {'active': False, 'started': 0.0, 'seen_pending': False, 'last': '', 'ack': False, 'ack_time': 0.0}
     agv_status_timeout_sec = 3.0
     last_interlock_warning_time = 0.0
 
@@ -649,6 +545,19 @@ def main():
         if not is_ready and not agv_status['inhibited']:
             agv_status['clear_pending'] = True
         agv_status['inhibited'] = not is_ready
+        if reset_watch['active']:
+            if 'RESET WAIT NC' in state or 'RESET WAIT POWER' in state or 'RESET VERIFY' in state or 'RESET REQUESTED' in state:
+                reset_watch['seen_pending'] = True
+            if state != reset_watch['last']:
+                reset_watch['last'] = state
+                print(f"\n[RESET STATUS] {msg.data}", flush=True)
+            if (is_ready and reset_watch['ack'] and
+                    agv_status['last_rx'] > reset_watch['ack_time'] and reset_watch['seen_pending']):
+                reset_watch['active'] = False
+                print('\n[RESET COMPLETE] READY 확인. 새 주행 명령 필요.', flush=True)
+            elif 'RESET FAILED' in state or 'ADS DISCONNECTED' in state:
+                reset_watch['active'] = False
+                print('\n[RESET FAILED] PLC 진단 확인 필요.', flush=True)
 
     node.create_subscription(String, '/agv_status', on_agv_status, qos)
 
@@ -677,12 +586,17 @@ def main():
         try:
             response = future.result()
             if response is None:
+                reset_watch['active'] = False
                 print('\n[RESET][ERROR] Empty response from reset service.', flush=True)
             elif response.success:
+                reset_watch['ack'] = True
+                reset_watch['ack_time'] = time.monotonic()
                 print(f'\n[RESET][ACK] {response.message}', flush=True)
             else:
+                reset_watch['active'] = False
                 print(f'\n[RESET][FAIL] {response.message}', flush=True)
         except Exception as exc:
+            reset_watch['active'] = False
             print(f'\n[RESET][ERROR] Service call failed: {exc}', flush=True)
 
     # Manual motor power services.
@@ -729,11 +643,14 @@ def main():
                 publish_rail_command(pub_rail_command, 'STOP')
                 publish_rail_speed_setpoint(pub_rail_speed_setpoint, 0.0)
                 print('\n[AGV FAULT] Previous teleop targets CLEARED; fresh input required after READY.')
+            if reset_watch['active'] and time.monotonic() - reset_watch['started'] > 45.0 and not reset_watch.get('warned', False):
+                reset_watch['warned'] = True
+                print('\n[RESET WAIT] 완료 미확인. 주행 차단 유지, PLC 상태 확인 후 R 재요청.')
             key = get_key(settings)
             # Accept Caps Lock / uppercase keys without changing Ctrl+C or space.
             if len(key) == 1:
                 key = key.lower()
-            if agv_status['inhibited'] and key in ('w','x','a','d','t','b','1','2'):
+            if (agv_status['inhibited'] or reset_watch['active']) and key in ('w','x','a','d','t','b','1','2','e','y','4','5','6','7','8','9'):
                 if time.monotonic() - last_interlock_warning_time >= 3.0:
                     print('\n[AGV] 주행 잠금: READY 대기 중')
                     last_interlock_warning_time = time.monotonic()
@@ -910,6 +827,7 @@ def main():
                 elif not reset_faults_client.service_is_ready():
                     print('[RESET][ERROR] /agv/reset_faults service is not available.')
                 else:
+                    reset_watch.update(active=True, started=time.monotonic(), seen_pending=False, last='', ack=False, ack_time=0.0, warned=False)
                     future = reset_faults_client.call_async(Trigger.Request())
                     reset_future_ref['future'] = future
                     future.add_done_callback(on_reset_complete)
@@ -924,7 +842,7 @@ def main():
 
             # ---------------- Read-only recovery diagnostics ----------------
             elif key == 'v':
-                # Direct TwinCAT restart; no motor-zero/PLC-state gating.
+                # Restart only with fresh standstill / Power OFF feedback.
                 wheel_teleop_claimed = True
                 target_linear_velocity = 0.0
                 target_angular_velocity = 0.0
@@ -939,6 +857,39 @@ def main():
                 # heartbeat resumes after the menu closes.
                 last_wheel_publish_mono = 0.0
                 print_vels(0.0, 0.0, 0.0)
+
+            elif key == 'u':
+                # Release only from an idle, fresh READY state; do not resume an old Nav2 goal.
+                snap = axis_snapshot_ref.get('data')
+                idle = bool(snap and time.monotonic() - snap['time'] <= 0.5 and
+                            len(snap['axes']) == 3 and {a.get('axis') for a in snap['axes']} == {1,2,3} and
+                            all(a.get('not_moving') is True and a.get('has_job') is False and
+                                a.get('moving_fw') is False and a.get('moving_bw') is False and
+                                a.get('error') is False and isinstance(a.get('velocity_mps'), (int,float)) and
+                                abs(a['velocity_mps']) <= 0.001 for a in snap['axes']))
+                if (not idle or agv_status['inhibited'] or reset_watch['active'] or
+                        any(abs(v) > 1e-6 for v in (target_linear_velocity, target_angular_velocity, target_rail_velocity))):
+                    print('\n[NAV2] 반환 거부: M 정지 후 PLC READY/정지 확인 필요.')
+                elif input('Nav2 기존 목표 취소 및 위험구역 확인 후 CONFIRM 입력: ').strip() == 'CONFIRM':
+                    # Input may take arbitrarily long: refresh feedback before releasing.
+                    started = time.monotonic()
+                    while rclpy.ok() and time.monotonic() - started < 0.5:
+                        rclpy.spin_once(node, timeout_sec=0.05)
+                    snap = axis_snapshot_ref.get('data')
+                    if (snap and snap['time'] > started and agv_status['last_rx'] > started and
+                            not agv_status['inhibited'] and len(snap['axes']) == 3 and
+                            {a.get('axis') for a in snap['axes']} == {1,2,3} and
+                            all(a.get('not_moving') is True and a.get('has_job') is False and
+                                a.get('moving_fw') is False and a.get('moving_bw') is False and
+                                a.get('error') is False and isinstance(a.get('velocity_mps'), (int,float)) and
+                                abs(a['velocity_mps']) <= 0.001 for a in snap['axes'])):
+                        wheel_teleop_claimed = False
+                        print('[NAV2] Teleop 제어권 반환. 새 목표를 설정하세요.')
+                    else:
+                        print('[NAV2] 최신 READY/정지 확인 실패. 반환 취소.')
+            elif key == 'j':
+                if input('실제 정지 및 위험구역 확인 후 CONFIRM 입력: ').strip() == 'CONFIRM':
+                    _call_trigger_service(node, APPROVE_ADS_SERVICE)
 
             # ---------------- Operator approval after Reset ----------------
             elif key == 'n':
@@ -967,8 +918,9 @@ def main():
             if (wheel_teleop_claimed and
                     time.monotonic() - last_wheel_publish_mono >= wheel_heartbeat_period_sec):
                 twist = Twist()
-                twist.linear.x = 0.0 if agv_status['inhibited'] else target_linear_velocity
-                twist.angular.z = 0.0 if agv_status['inhibited'] else target_angular_velocity
+                blocked = agv_status['inhibited'] or reset_watch['active']
+                twist.linear.x = 0.0 if blocked else target_linear_velocity
+                twist.angular.z = 0.0 if blocked else target_angular_velocity
                 pub_wheel.publish(twist)
                 last_wheel_publish_mono = time.monotonic()
 

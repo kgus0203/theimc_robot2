@@ -83,8 +83,13 @@ def generate_launch_description():
 
                     # 정렬 완료 후 연속 전진 속도
                     'forward_speed': 0.07,
-                    'min_forward_speed': 0.03,
+                    'min_forward_speed': 0.05,
                     'min_rail_confidence': 0.45,
+                    # 최종 성공 tolerance보다 엄격하게 접근 제어
+                    'control_tolerance_ratio': 0.65,
+                    'min_control_x_tolerance': 0.06,
+                    'min_control_angle_tolerance': 1.5,
+                    'near_fail_hold_sec': 1.0,
 
                     # rail_info가 이 시간 이상 갱신되지 않으면 즉시 정지
                     'rail_timeout_sec': 0.5,

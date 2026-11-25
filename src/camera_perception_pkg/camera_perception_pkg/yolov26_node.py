@@ -59,7 +59,7 @@ class Yolov26Node(LifecycleNode):
         self.declare_parameter(
             "model",
             "/home/jeff/theimc_robot/src/"
-            "camera_perception_pkg/test/best_261119.pt"
+            "camera_perception_pkg/test/best_261122.pt"
         )
 
         # 추론 장치

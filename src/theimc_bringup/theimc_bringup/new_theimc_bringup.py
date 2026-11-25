@@ -3,6 +3,7 @@
 import math
 import serial
 import sys
+import time
 
 import rclpy
 from nav_msgs.msg import Odometry
@@ -64,7 +65,7 @@ class BringUp(Node):
         # ------------------------------------------------------------
         self.declare_parameter('serial_port', '/dev/stm32_link')
         self.declare_parameter('baud_rate', 115200)
-        self.declare_parameter('serial_timeout', 0.1)
+        self.declare_parameter('serial_timeout', 0.0)  # RX is always non-blocking
 
         self.declare_parameter('rail_forward_speed', 0.2)
         self.declare_parameter('rail_back_speed', 0.5)
@@ -133,7 +134,8 @@ class BringUp(Node):
             self.stm_serial = serial.Serial(
                 port=self.serial_port,
                 baudrate=self.baud_rate,
-                timeout=self.serial_timeout,
+                timeout=0.0,
+                write_timeout=0.05,
             )
             self.stm_serial.reset_input_buffer()
             self.get_logger().info(
@@ -145,6 +147,11 @@ class BringUp(Node):
             sys.exit(1)
 
         self.max_serial_lines_per_update = 64
+        self._rx_buf = bytearray()
+        self._rx_discard_until_newline = False
+        self.max_serial_read_bytes = 4096
+        self.max_serial_line_bytes = 4096
+        self.max_serial_buffer_bytes = 65536
 
         # ------------------------------------------------------------
         # Rail state / command
@@ -244,7 +251,10 @@ class BringUp(Node):
 
         # A driver latch clears stored rail targets so Reset cannot restart
         # a command that was issued BEFORE the fault.
-        self.agv_motion_inhibited = False
+        self.agv_motion_inhibited = True
+        self._last_agv_status_mono = None
+        self._last_rail_feedback_mono = None
+        self._last_scan_mono = None
         self.sub_agv_status = self.create_subscription(
             String, '/agv_status', self.cb_agv_status, qos_profile,
         )
@@ -459,10 +469,7 @@ class BringUp(Node):
         )
 
         if self.auto_reset_faults_on_start:
-            self.auto_reset_faults_timer = self.create_timer(
-                self.auto_reset_faults_delay_sec,
-                self._auto_reset_faults_once,
-            )
+            self.get_logger().warning("Automatic startup Reset disabled; use operator Reset.")
 
         # Initial state
         self.publish_rail_end_reached(False)
@@ -478,26 +485,24 @@ class BringUp(Node):
         )
 
     def cb_agv_status(self, msg):
-        state = msg.data.upper()
-        inhibited = any(token in state for token in (
-            'SAFE STOP LATCHED', 'AXIS FAULT LATCHED',
-            'RESET REQUESTED', 'MOTION NOT READY', 'ADS DISCONNECTED',
-        ))
-        if inhibited and not self.agv_motion_inhibited:
+        state = msg.data.upper().strip()
+        self._last_agv_status_mono = time.monotonic()
+        inhibited = not state.startswith('AGV ADS DRIVER: READY /')
+        if inhibited:
+            if not self.agv_motion_inhibited:
+                self.get_logger().warning('[AGV INTERLOCK] Driver not READY; rail targets discarded.')
             self.agv_motion_inhibited = True
-            self.pending_reverse_command = None
-            self.reverse_standstill_samples = 0
-            self.variable_rail_speed_mode = False
-            self.variable_rail_speed_setpoint = 0.0
-            self.requested_rail_command = 'STOP'
-            self.last_rail_motion_direction = 'STOP'
-            self._set_effective_rail_speed(0.0, reason='AGV driver fault / not ready')
-            self.get_logger().warning(
-                '[AGV INTERLOCK] Previous rail motion request discarded; '
-                'a fresh command is required after recovery.')
-        elif not inhibited and self.agv_motion_inhibited and 'READY' in state:
+            self._cancel_rail_request('AGV driver not ready')
+        elif self.agv_motion_inhibited:
             self.agv_motion_inhibited = False
             self.get_logger().info('[AGV INTERLOCK] READY; waiting for NEW operator command.')
+
+    def _cancel_rail_request(self, reason):
+        self.pending_reverse_command = None
+        self.reverse_standstill_samples = 0
+        self.variable_rail_speed_setpoint = 0.0
+        self.requested_rail_command = 'STOP'
+        self._set_effective_rail_speed(0.0, reason=reason)
 
     def _auto_reset_faults_once(self):
         if self.auto_reset_faults_attempted:
@@ -572,8 +577,10 @@ class BringUp(Node):
         serial_command = f'WPT_CMD,{command}\n'
 
         try:
-            self.stm_serial.write(serial_command.encode('ascii'))
-            self.stm_serial.flush()
+            payload = serial_command.encode('ascii')
+            if self.stm_serial.write(payload) != len(payload):
+                raise serial.SerialTimeoutException('Incomplete WPT command write')
+            # Do not block the ROS executor waiting for UART drain.
             self.get_logger().info(
                 f'[CHARGER CMD] {command} -> STM32'
             )
@@ -587,22 +594,26 @@ class BringUp(Node):
     # ============================================================
     def cb_rail_cmd_msg(self, msg):
         command = msg.data.strip().upper()
+        if command == 'PREPARE_ENTRY':
+            # agv_ads_driver owns guarded pre-enable and overlap.
+            return
         if self.agv_motion_inhibited and command != 'STOP':
             self.get_logger().warning('[AGV INTERLOCK] Rail command denied until driver READY.')
             return
-        self.variable_rail_speed_mode = False
-        self.variable_rail_speed_setpoint = 0.0
-
         if command not in ('FORWARD', 'BACK', 'STOP'):
             self.get_logger().warning(
                 f'Unsupported rail command: {command}'
             )
             return
 
+        self.variable_rail_speed_mode = False
+        self.variable_rail_speed_setpoint = 0.0
+
         # STOP always has the highest priority and also cancels any
         # pending direction reversal.
         if command == 'STOP':
             self.pending_reverse_command = None
+            self.reverse_standstill_samples = 0
             self.requested_rail_command = 'STOP'
             self._set_effective_rail_command(
                 'STOP',
@@ -614,8 +625,9 @@ class BringUp(Node):
         if self.pending_reverse_command is not None:
             # Keep STOP asserted while the earlier reverse is being resolved.
             # Updating the requested direction must not bypass that interlock.
-            self.pending_reverse_command = command
-            self.reverse_standstill_samples = 0
+            if self.pending_reverse_command != command:
+                self.pending_reverse_command = command
+                self.reverse_standstill_samples = 0
             self._set_effective_rail_speed(0.0, reason='rail reverse pending')
             return
 
@@ -690,6 +702,7 @@ class BringUp(Node):
 
         if abs(speed) < 1.0e-6:
             self.pending_reverse_command = None
+            self.reverse_standstill_samples = 0
             self.requested_rail_command = 'STOP'
             self._set_effective_rail_speed(
                 0.0,
@@ -700,8 +713,9 @@ class BringUp(Node):
         command = 'FORWARD' if speed > 0.0 else 'BACK'
         self.requested_rail_command = command
         if self.pending_reverse_command is not None:
-            self.pending_reverse_command = command
-            self.reverse_standstill_samples = 0
+            if self.pending_reverse_command != command:
+                self.pending_reverse_command = command
+                self.reverse_standstill_samples = 0
             self._set_effective_rail_speed(0.0, reason='variable rail reverse pending')
             return
 
@@ -726,33 +740,7 @@ class BringUp(Node):
         self.pending_reverse_command = None
         self.last_rail_motion_direction = command
 
-        if self.rail_state not in self.rail_motor_allowed_states:
-            self._set_effective_rail_speed(
-                0.0,
-                reason=f'{command} blocked in rail_state={self.rail_state}',
-            )
-            return
-
-        if command == 'FORWARD' and self.rail_end_reached:
-            self._set_effective_rail_speed(
-                0.0,
-                reason='FORWARD blocked by rail end',
-            )
-            return
-
-        if self._obstacle_for_direction(command):
-            self.obstacle_stop_latched = True
-            self._set_effective_rail_speed(
-                0.0,
-                reason=f'{command} blocked by obstacle',
-            )
-            return
-
-        self.obstacle_stop_latched = False
-        self._set_effective_rail_speed(
-            speed,
-            reason='rail speed setpoint',
-        )
+        self._reevaluate_rail_command(reason='rail speed setpoint')
 
     def _set_effective_rail_speed(self, speed, reason=''):
         speed = float(speed)
@@ -805,6 +793,8 @@ class BringUp(Node):
 
         previous_state = self.rail_state
         self.rail_state = rail_state
+        if previous_state not in self.rail_motor_allowed_states:
+            self._last_scan_mono = None
 
         self.get_logger().info(
             f'Rail state: {previous_state} -> {rail_state}'
@@ -815,6 +805,7 @@ class BringUp(Node):
             self.variable_rail_speed_mode = False
             self.variable_rail_speed_setpoint = 0.0
             self.pending_reverse_command = None
+            self.reverse_standstill_samples = 0
             self.requested_rail_command = 'STOP'
             self._set_effective_rail_command(
                 'STOP',
@@ -828,59 +819,39 @@ class BringUp(Node):
 
     def _reevaluate_rail_command(self, reason=''):
         command = self.requested_rail_command
-
-        # While a direction reversal is pending, stay at STOP until
-        # /rail/speed_feedback confirms that the motor is stationary.
-        if (
-            self.pending_reverse_command is not None and
-            command == self.pending_reverse_command
-        ):
-            self._set_effective_rail_command(
-                'STOP',
-                reason='waiting for rail motor to stop before reverse',
-            )
+        if self.agv_motion_inhibited or command == 'STOP':
+            self._set_effective_rail_speed(0.0, reason=reason)
             return
-
-        if command == 'STOP':
-            self._set_effective_rail_command(
-                'STOP',
-                reason=reason,
-            )
-            return
-
-        # Rail motor must never run outside the allowed rail states.
         if self.rail_state not in self.rail_motor_allowed_states:
-            self._set_effective_rail_command(
-                'STOP',
-                reason=(
-                    f'{command} blocked in rail_state={self.rail_state}'
-                ),
-            )
+            self._cancel_rail_request(f'{command} blocked in rail_state={self.rail_state}')
             return
-
-        # Rail end blocks only FORWARD. BACK remains available to retreat.
+        now = time.monotonic()
+        if (self._last_scan_mono is None or now - self._last_scan_mono > 0.5 or
+                self._last_rail_feedback_mono is None or now - self._last_rail_feedback_mono > 0.5):
+            self._cancel_rail_request('rail scan/feedback missing or stale; new command required')
+            return
         if command == 'FORWARD' and self.rail_end_reached:
-            self._set_effective_rail_command(
-                'STOP',
-                reason='FORWARD blocked by rail end',
-            )
+            self._set_effective_rail_speed(0.0, reason='FORWARD blocked by rail end')
             return
-
-        # Directional obstacle check.
         if self._obstacle_for_direction(command):
             self.obstacle_stop_latched = True
-            self._set_effective_rail_command(
-                'STOP',
-                reason=f'{command} blocked by obstacle',
-            )
+            if self.variable_rail_speed_mode:
+                self._cancel_rail_request('manual rail obstacle; new setpoint required')
+            else:
+                self._set_effective_rail_speed(0.0, reason=f'{command} blocked by obstacle')
             return
-
-        # Safe to execute requested motion.
+        if self.pending_reverse_command is not None:
+            self._set_effective_rail_speed(0.0, reason='reverse STOP pending')
+            return
         self.obstacle_stop_latched = False
-        self._set_effective_rail_command(
-            command,
-            reason=reason,
-        )
+        if self.variable_rail_speed_mode:
+            speed = self.variable_rail_speed_setpoint
+            if (command == 'FORWARD' and speed > 0.0) or (command == 'BACK' and speed < 0.0):
+                self._set_effective_rail_speed(speed, reason=reason)
+            else:
+                self._cancel_rail_request('variable speed/direction mismatch')
+        else:
+            self._set_effective_rail_command(command, reason=reason)
 
     def _set_effective_rail_command(
         self,
@@ -925,9 +896,12 @@ class BringUp(Node):
         time on every message but sends a Beckhoff MoveVelocity command only
         when the requested speed actually changes.
         """
-        self._publish_rail_speed_command(
-            self.effective_rail_speed
-        )
+        now = time.monotonic()
+        if self._last_agv_status_mono is None or now - self._last_agv_status_mono > 3.0:
+            self.agv_motion_inhibited = True
+            self._cancel_rail_request('AGV status timeout')
+        self._reevaluate_rail_command(reason='heartbeat')
+        self._publish_rail_speed_command(self.effective_rail_speed)
 
     def _publish_rail_speed_command(self, speed):
         msg = Float32()
@@ -967,6 +941,7 @@ class BringUp(Node):
                 self.rail_obstacle
             )
 
+            self._last_scan_mono = None
             self.front_rail_obstacle = False
             self.rear_rail_obstacle = False
             self.rail_obstacle = False
@@ -1018,6 +993,7 @@ class BringUp(Node):
                 rear_detected = True
                 rear_min = min(rear_min, distance)
 
+        self._last_scan_mono = time.monotonic()
         old_front = self.front_rail_obstacle
         old_rear = self.rear_rail_obstacle
 
@@ -1059,7 +1035,7 @@ class BringUp(Node):
         if not self.rail_obstacle and previous_combined:
             self.get_logger().info(
                 'Rail obstacle cleared. '
-                'Requested rail command will resume automatically.'
+                'Fixed BT command may resume; manual setpoint requires new input.'
             )
 
         if directional_changed or (
@@ -1098,6 +1074,10 @@ class BringUp(Node):
         if abs(measured_velocity) < 0.001:
             measured_velocity = 0.0
 
+        now_mono = time.monotonic()
+        if self._last_rail_feedback_mono is None or now_mono - self._last_rail_feedback_mono > 0.5:
+            self.reverse_standstill_samples = 0
+        self._last_rail_feedback_mono = now_mono
         self.last_measured_rail_velocity = measured_velocity
 
         # Complete a pending direction reversal only after the actual
@@ -1123,12 +1103,6 @@ class BringUp(Node):
                 f'{reverse_command}'
             )
 
-            if not self.variable_rail_speed_mode:
-                self._reevaluate_rail_command(
-                    reason='STOP confirmed before direction reversal'
-                )
-            # Variable setpoints are handled by the variable-speed branch below.
-
         speed_msg = Float32MultiArray()
         speed_msg.data = values
         self.pub_rail_speed.publish(speed_msg)
@@ -1145,7 +1119,7 @@ class BringUp(Node):
                 self.rail_odom_last_time
             ).nanoseconds * 1e-9
 
-            if rail_odom_active and dt > 0.0:
+            if rail_odom_active and 0.0 < dt < 0.5:
                 self.rail_odom_distance += (
                     measured_velocity * dt
                 )
@@ -1170,48 +1144,7 @@ class BringUp(Node):
         ):
             self.set_rail_end_reached(False)
 
-        # A rail-end / obstacle update may block or resume motion.
-        # In variable-speed mode, preserve the exact signed speed requested
-        # by t/b/g instead of remapping BACK/FORWARD to the fixed 0.2 m/s.
-        if self.pending_reverse_command is not None:
-            # Do not let variable-speed feedback handling bypass reverse STOP.
-            self._set_effective_rail_speed(0.0, reason='reverse STOP pending')
-        elif self.variable_rail_speed_mode:
-            variable_speed = self.variable_rail_speed_setpoint
-
-            if abs(variable_speed) < 1.0e-6:
-                self._set_effective_rail_speed(
-                    0.0,
-                    reason='rail feedback update / variable STOP',
-                )
-            else:
-                variable_direction = (
-                    'FORWARD' if variable_speed > 0.0 else 'BACK'
-                )
-
-                blocked = False
-
-                if self.rail_state not in self.rail_motor_allowed_states:
-                    blocked = True
-                elif variable_direction == 'FORWARD' and self.rail_end_reached:
-                    blocked = True
-                elif self._obstacle_for_direction(variable_direction):
-                    blocked = True
-
-                if blocked:
-                    self._set_effective_rail_speed(
-                        0.0,
-                        reason='rail feedback update / variable speed blocked',
-                    )
-                else:
-                    self._set_effective_rail_speed(
-                        variable_speed,
-                        reason='rail feedback update / keep variable speed',
-                    )
-        else:
-            self._reevaluate_rail_command(
-                reason='rail feedback update'
-            )
+        self._reevaluate_rail_command(reason='rail feedback update')
 
         odom_velocity = (
             measured_velocity
@@ -1234,7 +1167,7 @@ class BringUp(Node):
         msg = Odometry()
         msg.header.stamp = timestamp_now.to_msg()
         msg.header.frame_id = 'rail_odom'
-        msg.child_frame_id = 'base_footprint'
+        msg.child_frame_id = 'agv_base_footprint'
 
         msg.pose.pose.position.x = float(distance)
         msg.pose.pose.orientation.w = 1.0
@@ -1305,10 +1238,13 @@ class BringUp(Node):
     # STM32 serial: IMU / TOF / Battery BMS / WPT charger
     # ============================================================
     def update_stm_sensors(self):
-        if self.stm_serial.in_waiting <= 0:
-            return
-
         try:
+            waiting = min(self.stm_serial.in_waiting, self.max_serial_read_bytes)
+            if waiting:
+                self._rx_buf.extend(self.stm_serial.read(waiting))
+            if len(self._rx_buf) > self.max_serial_buffer_bytes:
+                self._rx_buf.clear()
+                self._rx_discard_until_newline = True
             latest_imu_line = None
             latest_tof_line = None
             latest_tof_rail_state_line = None
@@ -1318,16 +1254,25 @@ class BringUp(Node):
 
             lines_read = 0
 
-            while (
-                self.stm_serial.in_waiting > 0 and
-                lines_read < self.max_serial_lines_per_update
-            ):
-                line = (
-                    self.stm_serial.readline()
-                    .decode('utf-8', errors='ignore')
-                    .strip()
-                )
+            while lines_read < self.max_serial_lines_per_update:
+                newline = self._rx_buf.find(b'\n')
+                if newline < 0:
+                    if len(self._rx_buf) > self.max_serial_line_bytes:
+                        self._rx_buf.clear()
+                        self._rx_discard_until_newline = True
+                    break
+                raw = bytes(self._rx_buf[:newline])
+                del self._rx_buf[:newline + 1]
                 lines_read += 1
+                if self._rx_discard_until_newline:
+                    self._rx_discard_until_newline = False
+                    continue
+                if len(raw) > self.max_serial_line_bytes:
+                    continue
+                try:
+                    line = raw.decode('utf-8').strip()
+                except UnicodeDecodeError:
+                    continue
 
                 if not line:
                     continue
@@ -1497,6 +1442,7 @@ class BringUp(Node):
             bool_msg = Bool()
             bool_msg.data = False
             self.pub_charger_ready.publish(bool_msg)
+            self.pub_charger_contact.publish(bool_msg)
             self.pub_charger_charging.publish(bool_msg)
             self.pub_charger_completed.publish(bool_msg)
 
@@ -1684,12 +1630,12 @@ class BringUp(Node):
         quaternion = quaternion_from_euler(
             math.radians(roll_deg),
             math.radians(pitch_deg),
-            math.radians(yaw_deg),
+            math.radians(-yaw_deg),  # STM yaw increases clockwise; ROS yaw increases CCW
         )
 
         message = Imu()
         message.header.stamp = timestamp_now.to_msg()
-        message.header.frame_id = 'imu_link'
+        message.header.frame_id = 'agv_imu_link'
 
         message.orientation.x = quaternion[0]
         message.orientation.y = quaternion[1]
@@ -1705,7 +1651,7 @@ class BringUp(Node):
         if gyro is not None:
             message.angular_velocity.x = gyro[0]
             message.angular_velocity.y = gyro[1]
-            message.angular_velocity.z = gyro[2]
+            message.angular_velocity.z = -gyro[2]  # STM clockwise-positive -> ROS CCW-positive
             # Placeholder variance; calibrate against the actual IMU.
             message.angular_velocity_covariance = [
                 0.01, 0.0, 0.0,

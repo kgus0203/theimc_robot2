@@ -18,11 +18,7 @@ import os
 import xml.etree.ElementTree as ET
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument,
-    IncludeLaunchDescription,
-    SetEnvironmentVariable,
-)
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -63,11 +59,6 @@ def generate_launch_description():
     )
     params_twist_mux = PathJoinSubstitution(
         [pkg_share_bringup, 'params', 'twist_mux_params.yaml']
-    )
-    fastdds_profile = os.path.join(
-        pkg_share_bringup,
-        'params',
-        'fastdds_udp_only.xml',
     )
 
     urdf_file = os.path.join(
@@ -111,8 +102,9 @@ def generate_launch_description():
         executable='bringup_node',
         name='bringup_node',
         output='screen',
-        # Do not reset Beckhoff faults automatically on ROS launch.
-        # Inspect the alarm and recover explicitly using /agv/reset_faults.
+        # Automatic bringup-node fault reset on launch is disabled.
+        # This is separate from agv_ads_driver auto_reset_axis_fault=False.
+        # Review this startup policy before running on the physical AGV.
         parameters=[{'auto_reset_faults_on_start': False}],
     )
 
@@ -195,8 +187,8 @@ def generate_launch_description():
     #   Axis 3     = rail motor
     #
     # Wheel dimensions:
-    #   diameter            = 0.2032 m (8 inch)
-    #   center-to-center    = 0.930 m
+    #   diameter            = 0.206 m (configured value; verify against field measurement)
+    #   center-to-center    = 0.900 m (configured value; verify against field measurement and URDF)
     #   rail wheel diameter = 0.130 m (already handled by PLC)
     #
     # NOTE:
@@ -226,21 +218,26 @@ def generate_launch_description():
                 'right_wheel_sign': 1.0,
                 'rail_sign': 1.0,
 
-                # Actual drive-wheel geometry
-                'wheel_separation_m': 0.930,
-                'wheel_diameter_m': 0.2032,
+                # Drive-wheel geometry: use agv_node field-verified values
+                # (URDF dimensions differ and should be reconciled separately).
+                'wheel_separation_m': 0.900,
+                'wheel_diameter_m': 0.206,
+
+                # Match agv_node's field-verified IMU yaw sign.
+                # Revalidate sensor orientation on the real robot before driving.
+                'imu_yaw_sign': 1.0,
 
                 # ROS m/s -> Beckhoff mm/s
                 'velocity_scale': 1000.0,
 
                 # Beckhoff MoveVelocity parameters
-                'wheel_ramp_ms': 600.0,
+                'wheel_ramp_ms': 500.0,
                 'rail_ramp_ms': 1000.0,
                 'jerk_percent': 100.0,
                 'rail_direction_stop_hold_ms': 200.0,
 
                 # Command watchdogs
-                'cmd_vel_timeout_sec': 10.0,  # requested ROS watchdog; independent PLC watchdog required
+                'cmd_vel_timeout_sec': 1.0,  # requested ROS watchdog; independent PLC watchdog required
                 'rail_cmd_timeout_sec': 10.0,  # requested ROS watchdog; independent PLC watchdog required
                 # ADS motion command serialization (conservative ramp+margin).
                 # Does not replace checking PLC MoveVelocity_Status/Stop_Status.
@@ -253,6 +250,14 @@ def generate_launch_description():
 
                 # Do not resend nearly-identical velocity commands
                 'wheel_command_epsilon_mps': 0.005,
+                # Balance state follows original /cmd_vel, not IMU micro-corrections.
+                'wheel_balance_reference_epsilon_mps': 0.010,
+                'wheel_balance_kp': 0.10,
+                'wheel_balance_deadband_mps': 0.003,
+                'wheel_balance_max_correction_mps': 0.008,
+                'wheel_balance_settle_sec': 2.00,
+                'imu_correction_interval_sec': 2.00,
+                'imu_max_correction_step_rps': 0.01,
                 'rail_command_epsilon_mps': 0.001,
 
                 # Normal bringup: enable axes once at startup,
@@ -265,7 +270,21 @@ def generate_launch_description():
                 'shutdown_poweroff_timeout_sec': 7.0,
                 # Keep strict NC/FB interlocks; do not treat speed=0 as NotMoving.
                 'startup_power_transition_timeout_sec': 5.0,
-                'allow_simultaneous_drive': False,
+                # ON_RAIL transition only: Axis1/2 + Axis3 overlap for 10 seconds,
+                # then stop and power off Axis1/2 after verified NC standstill.
+                # Requires agv_node built from the corresponding updated entry-overlap C++ source.
+                'allow_simultaneous_drive': False,  # independent/manual dual mode OFF
+                'on_rail_overlap_enable': True,
+                'on_rail_overlap_sec': 10.0,
+                'on_rail_overlap_start_timeout_sec': 10.0,
+                'on_rail_overlap_max_wheel_mps': 0.30,
+                'on_rail_overlap_max_rail_mps': 0.30,
+                # Normal wheel/rail maximum: 0.5 m/s per motor axis.
+                'normal_wheel_axis_max_mps': 0.5,
+                'normal_rail_max_mps': 0.5,
+                # Manual simultaneous drive: each axis limited to 0.3 m/s.
+                'dual_wheel_axis_max_mps': 0.30,
+                'dual_rail_max_mps': 0.30,
                 'auto_reset_axis_fault': False,  # operator-initiated reset only
                 # Vendor policy: on StopMove failure, request PowerDisable once and latch motion.
                 # Verify coast/brake behavior under site safety controls before using on hardware.
@@ -276,9 +295,8 @@ def generate_launch_description():
                 'diagnostic_ads_poll_period_sec': 0.5,
                 'ads_slow_read_warn_ms': 100.0,
 
-                # Suppress repetitive normal-motion logs.
-                'log_motion_commands': False,  # reduce repetitive 20 Hz log output
-                'log_environment_sensor': False,
+                # Enable normal-motion logs temporarily for field testing.
+                'log_motion_commands': True,  # temporary field-test logging
             }
         ],
     )
@@ -382,11 +400,6 @@ def generate_launch_description():
     )
 
     launch_description = LaunchDescription(ARGUMENTS)
-    # Avoid stale FastDDS shared-memory locks after forced ROS process exits.
-    launch_description.add_action(SetEnvironmentVariable(
-        name='FASTRTPS_DEFAULT_PROFILES_FILE',
-        value=fastdds_profile,
-    ))
     launch_description.add_action(robot_state_publisher_cmd)
     launch_description.add_action(twist_mux_cmd)
     launch_description.add_action(motor_drive_cmd)

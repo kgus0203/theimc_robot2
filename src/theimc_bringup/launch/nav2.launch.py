@@ -134,8 +134,10 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': use_sim_time,
             'autostart': True,
-            'bond_timeout': 15.0,
-            'bond_respawn_max_duration': 30.0,
+            # Keep this shorter than launch's SIGINT/SIGTERM escalation window
+            # so the manager can finish cleanup before launch sends SIGKILL.
+            'bond_timeout': 4.0,
+            'bond_respawn_max_duration': 10.0,
             'node_names': [
                 'filter_mask_server',
                 'costmap_filter_info_server',
@@ -160,8 +162,8 @@ def generate_launch_description():
     )
     nav2_remapping_group = GroupAction(
         actions=[
-            SetParameter(name='bond_timeout', value=15.0),
-            SetParameter(name='bond_respawn_max_duration', value=30.0),
+            SetParameter(name='bond_timeout', value=4.0),
+            SetParameter(name='bond_respawn_max_duration', value=10.0),
             SetRemap(src='/cmd_vel', dst='/cmd_vel_nav'),
             SetRemap(src='cmd_vel', dst='/cmd_vel_nav'),
             nav2_bringup_launch

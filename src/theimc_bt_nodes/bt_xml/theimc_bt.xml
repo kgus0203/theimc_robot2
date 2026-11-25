@@ -460,7 +460,7 @@
 
   <!-- ========================================================= -->
   <!-- COMMON ENTRY                                              -->
-  <!-- Timeout policy: Enter/Exit 20s, Work 60s, Resume seek 90s -->
+  <!-- Entry 10s overlap is set in launch; BT entry timeout allows approach, overlap and PLC handover -->
   <!-- RailEnter = TOF state only                                -->
   <!-- DriveUntilRailState = main wheel motion only              -->
   <!-- ========================================================= -->
@@ -470,9 +470,10 @@
       failure_threshold="1">
 
       <RailEnter
-        enter_tof_mm="110.0"
+        enter_tof_mm="155.0"
         on_rail_tof_mm="270.0"
-        timeout_sec="20.0"
+        timeout_sec="30.0"
+        overlap_timeout_sec="30.0"
         tof_stale_sec="0.5"
         enter_confirm_samples="2"
         on_rail_confirm_samples="3"
@@ -483,7 +484,7 @@
         linear_x="{enter_speed}"
         angular_z="0.0"
         target_state="ON_RAIL"
-        timeout_sec="20.0"/>
+        timeout_sec="40.0"/>
 
     </Parallel>
   </BehaviorTree>
@@ -566,6 +567,9 @@
         x_tolerance="0.25"
         angle_tolerance="3.0"
         allow_reverse_align="true"/>
+
+      <!-- Command Axis3 Power ON while stationary; driver gates wheel motion until READY. -->
+      <PublishRailCommand command="PREPARE_ENTRY"/>
 
 
       <!--
@@ -695,6 +699,9 @@
         x_tolerance="0.25"
         angle_tolerance="3.0"
         allow_reverse_align="true"/>
+
+      <!-- Command Axis3 Power ON while stationary; driver gates wheel motion until READY. -->
+      <PublishRailCommand command="PREPARE_ENTRY"/>
 
       <!-- ON_RAIL 성공 전까지 REVERSE_HOME 유지 -->
       <SubTreePlus
